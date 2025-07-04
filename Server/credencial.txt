@@ -1,0 +1,6 @@
+username:sunnext2010
+password:dwEDR0ERIAX4QfJd
+
+db connection string: mongodb+srv://sunnext2010:dwEDR0ERIAX4QfJd@webbgcluster.3q2lz3y.mongodb.net/?retryWrites=true&w=majority&appName=webbgcluster
+
+npm install mongodb
