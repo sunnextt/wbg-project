@@ -1,16 +1,21 @@
-const admin = require("../services/firebaseAdmin");
+const admin = require('../services/firebaseAdmin')
 
-const authMiddleware = async (req, res, next) => {
-  const token = req.headers.authorization?.split("Bearer ")[1];
-  if (!token) return res.status(401).json({ message: "No token" });
+const protect = async (req, res, next) => {
+  const authHeader = req.headers.authorization
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ message: 'No token provided' })
+  }
+
+  const token = authHeader.split(' ')[1]
 
   try {
-    const decoded = await admin.auth().verifyIdToken(token);
-    req.user = decoded;
-    next();
+    const decoded = await admin.auth().verifyIdToken(token)
+    req.user = decoded 
+    next()
   } catch (error) {
-    res.status(401).json({ message: "Invalid token" });
+    return res.status(401).json({ message: 'Invalid token' })
   }
-};
+}
 
-module.exports = authMiddleware;
+module.exports = protect

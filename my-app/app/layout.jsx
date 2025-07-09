@@ -1,23 +1,25 @@
-import { Layout } from '@/components/dom/Layout'
-import '@/global.css'
+import '@/global.css';
+import { AuthProvider } from 'lib/AuthContext'; // Ensure consistent path
+import Navbar from 'components/Navbar';
+import { Layout } from '@/components/dom/Layout';
 
 export const metadata = {
-  title: 'Next.js + Three.js',
-  description: 'A minimal starter for Nextjs + React-three-fiber and Threejs.',
-}
+  title: 'Arcade Nexus',
+  description: 'A web-based gaming platform with Next.js, Three.js, and Firebase authentication.',
+};
 
 export default function RootLayout({ children }) {
   return (
-    <html lang='en' className='antialiased'>
-      {/*
-        <head /> will contain the components returned by the nearest parent
-        head.tsx. Find out more at https://beta.nextjs.org/docs/api-reference/file-conventions/head
-      */}
-      <head />
+    <html lang="en" className="antialiased">
       <body>
-        {/* To avoid FOUT with styled-components wrap Layout with StyledComponentsRegistry https://beta.nextjs.org/docs/styling/css-in-js#styled-components */}
-        <Layout>{children}</Layout>
+        <AuthProvider>
+          <Navbar />
+          <Layout>{children}</Layout>
+          <footer className="text-center text-sm py-4 border-t">
+            © 2025 Arcade Nexus. All rights reserved.
+          </footer>
+        </AuthProvider>
       </body>
     </html>
-  )
+  );
 }
