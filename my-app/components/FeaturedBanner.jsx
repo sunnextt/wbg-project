@@ -1,18 +1,32 @@
-// components/FeaturedBanner.jsx
+import Image from 'next/image';
+import LudoBoard from '../src/img/ludo-board.webp';// Make sure image is in /public/img/ or src/img with proper import
+
 export default function FeaturedBanner() {
   return (
-    <div className="bg-white shadow-md rounded-xl overflow-hidden flex flex-col md:flex-row">
-      <div className="bg-gray-200 flex-1 h-48 md:h-auto" />
-      <div className="flex-1 p-6 bg-indigo-500 text-white">
-        <div className="mb-2 text-xs font-semibold uppercase bg-pink-500 px-2 py-1 inline-block rounded">Featured Game</div>
-        <h2 className="text-xl font-bold">The Grand Ludo Championship</h2>
-        <p className="mt-2 text-sm">
-          Join the ultimate Ludo tournament and compete for amazing prizes! Fast-paced action and strategic gameplay await.
+    <div className="bg-white shadow-xl rounded-2xl overflow-hidden flex flex-col md:flex-row transition-all duration-300">
+      
+      {/* Text Section */}
+      <div className="flex-1 p-8 bg-indigo-600 text-white flex flex-col justify-center">
+        <h2 className="text-3xl md:text-4xl font-extrabold mb-4 leading-tight">
+          🎲 Let the Ludo Battle Begin!
+        </h2>
+        <p className="text-md md:text-lg mb-6 opacity-90">
+          Challenge your friends, climb the leaderboard, and enjoy a fresh twist on the timeless Ludo game.
         </p>
-        <p className="mt-2 text-sm">👥 15,342 Players Online</p>
-        <button className="mt-4 bg-pink-600 hover:bg-pink-700 px-4 py-2 text-sm rounded-md font-medium">
-          ▶ Play Now
+        <button className="bg-white text-indigo-600 font-semibold px-6 py-3 rounded-lg hover:bg-gray-100 transition">
+          Start Playing
         </button>
+      </div>
+
+      {/* Image Section - Full Cover */}
+      <div className="relative md:w-1/2 h-64 md:h-auto">
+        <Image
+          src={LudoBoard}
+          alt="Ludo Game"
+          fill
+          className="object-cover"
+          priority
+        />
       </div>
     </div>
   )

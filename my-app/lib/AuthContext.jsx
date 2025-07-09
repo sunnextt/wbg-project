@@ -7,8 +7,8 @@ import { auth } from './firebase';
 const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null); // Firebase User instance
-  const [token, setToken] = useState(null); // Separate token state
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -16,8 +16,8 @@ export function AuthProvider({ children }) {
       if (firebaseUser) {
         try {
           const idToken = await firebaseUser.getIdToken();
-          setUser(firebaseUser); // Preserve Firebase User instance
-          setToken(idToken); // Store token separately
+          setUser(firebaseUser);
+          setToken(idToken);
         } catch (error) {
           console.error('Error fetching token:', error);
           setUser(null);

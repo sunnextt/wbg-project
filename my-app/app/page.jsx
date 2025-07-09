@@ -29,7 +29,6 @@ export default function Home() {
             <div className="space-y-4">
               <LobbyItem title="Ludo Frenzy" players="3/4" tag="Ludo" />
               <LobbyItem title="Quiz Masters" players="7/10" tag="Trivia Quiz" />
-              <LobbyItem title="Snakes Royale" players="2/4" tag="Snakes & Ladders" />
             </div>
           </section>
         </div>
@@ -41,11 +40,8 @@ export default function Home() {
           <section>
             <h3 className="text-md font-semibold text-gray-700 mb-2">🏆 Top Players</h3>
             <div className="space-y-3">
-              <PlayerCard name="MasterGamerX" points={12500} />
-              <PlayerCard name="ElitePlayer" points={11800} />
-              <PlayerCard name="QueenBee" points={10900} />
-              <PlayerCard name="SpeedyGonzales" points={9500} />
-              <PlayerCard name="LogicMind" points={8700} />
+              <PlayerCard name="Drake" points={125} />
+              <PlayerCard name="K.dot" points={118} />
             </div>
             <a href="#" className="text-pink-600 text-sm font-medium mt-2 inline-block">View All Leaderboards →</a>
           </section>
