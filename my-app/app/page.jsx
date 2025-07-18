@@ -1,9 +1,12 @@
 // app/page.jsx
-import FeaturedBanner from 'components/FeaturedBanner'
-import GameCard from 'components/GameCard'
-import LobbyItem from 'components/LobbyItem'
-import PlayerCard from 'components/PlayerCard'
-import SidebarFriends from '@/SidebarUsers'
+import FeaturedBanner from 'src/components/FeaturedBanner'
+import GameCard from 'src/components/GameCard'
+import LobbyItem from 'src/components/LobbyItem'
+import PlayerCard from 'src/components/PlayerCard'
+import SidebarFriends from 'src/components/SidebarUsers'
+
+import Link from 'next/link';
+
 
 
 export default function Home() {

@@ -1,6 +1,6 @@
 import '@/global.css';
-import { AuthProvider } from 'lib/AuthContext'; // Ensure consistent path
-import Navbar from 'components/Navbar';
+import { AuthProvider } from 'lib/AuthContext'; 
+import Navbar from '@/src/components/Navbar';
 import { Layout } from '@/components/dom/Layout';
 
 export const metadata = {

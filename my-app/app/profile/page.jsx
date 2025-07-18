@@ -179,7 +179,6 @@ export default function ProfilePage() {
           </button>
         </form>
 
-        {/* Feedback messages */}
         {success && <p className="text-green-600 text-sm text-center">{success}</p>}
         {error && <p className="text-red-500 text-sm text-center">{error}</p>}
 

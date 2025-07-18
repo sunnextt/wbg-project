@@ -86,7 +86,7 @@ export default function LoginPage() {
   }
 
   if (user) {
-    return null; // Redirecting
+    return null; 
   }
 
   return (

@@ -86,7 +86,7 @@ export default function RegisterPage() {
   }
 
   if (user) {
-    return null; // Redirecting
+    return null;
   }
 
   return (

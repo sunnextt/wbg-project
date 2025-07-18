@@ -7,7 +7,6 @@ const twitter = '@pmndrs'
 export default function Head() {
   return (
     <>
-      {/* Recommended Meta Tags */}
       <meta charSet='utf-8' />
       <meta name='language' content='english' />
       <meta httpEquiv='content-type' content='text/html' />
@@ -15,7 +14,6 @@ export default function Head() {
       <meta name='designer' content={author} />
       <meta name='publisher' content={author} />
 
-      {/* Search Engine Optimization Meta Tags */}
       <title>{title}</title>
       <meta name='description' content={description} />
       <meta
