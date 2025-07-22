@@ -1,7 +1,5 @@
-// lib/firebase.js
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-// Optional: Only import analytics if in the browser
 import { getAnalytics, isSupported } from "firebase/analytics";
 
 const firebaseConfig = {
@@ -14,11 +12,9 @@ const firebaseConfig = {
   measurementId: "G-FG0XYERNK8",
 };
 
-// Initialize Firebase only once
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 
-// Optional: enable analytics only in browser
 let analytics = null;
 if (typeof window !== "undefined") {
   isSupported().then((yes) => {
