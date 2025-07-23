@@ -20,3 +20,7 @@ Thumbs.db
 # Build outputs
 dist/
 build/
+
+# Ignore Firebase Admin SDK key
+Server/services/webbg-project-firebase-adminsdk-fbsvc-*.json
+

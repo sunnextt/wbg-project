@@ -1,5 +1,5 @@
 const admin = require("firebase-admin");
-const serviceAccount = require("./webbg-project-firebase-adminsdk-fbsvc-15099ff399.json");
+const serviceAccount = require("./webbg-project-firebase-adminsdk-fbsvc-1ebffefdca.json");
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),

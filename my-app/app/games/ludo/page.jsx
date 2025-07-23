@@ -6,7 +6,7 @@ import LudoCanvas from '@/src/components/ludo/LudoCanvas'
 
 export default function LudoGamePage() {
   return (
-    <main className="bg-green-50 ">
+    <main className="bg-green-50 min-h-screen">
       <div className="container mx-auto px-4 py-4 grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-9 flex justify-center items-center">
           <LudoCanvas />
