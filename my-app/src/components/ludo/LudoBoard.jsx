@@ -36,7 +36,6 @@ export default function LudoBoard({ setPawnRefs, ...props }) {
 
   return (
     <group {...props} dispose={null} ref={groupRef}>
-      {/* 🟢 DRAGGABLE PAWNS */}
       {pawnMeshes.map((data, idx) => (
         <mesh
           key={idx}
@@ -53,10 +52,11 @@ export default function LudoBoard({ setPawnRefs, ...props }) {
           material={data.mat}
           position={data.pos}
           scale={12.073}
+          onPointerOver={() => (document.body.style.cursor = 'pointer')}
+          onPointerOut={() => (document.body.style.cursor = 'default')}
         />
       ))}
 
-      {/* 🟦 BOARD */}
       <mesh
         castShadow
         receiveShadow

@@ -19,7 +19,7 @@ export default function DiceAnimator({ diceRef, trigger, onFinish }) {
     if (!isRolling.current || !diceRef.current) return
 
     frameCount.current += 1
-    const speed = 0.3
+    const speed = 0.5
 
     // Spin the dice randomly
     diceRef.current.rotation.x += speed + Math.random() * 0.1

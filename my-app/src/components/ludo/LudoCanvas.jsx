@@ -1,8 +1,8 @@
 'use client'
 
 import { Canvas, useThree } from '@react-three/fiber'
-import { OrbitControls, Environment, DragControls } from '@react-three/drei'
-import { useRef, useState } from 'react'
+import { Environment, DragControls, OrbitControls } from '@react-three/drei'
+import { Suspense, useRef, useState } from 'react'
 import LudoBoard from './LudoBoard'
 import Dice from './Dice'
 import DiceAnimator from './DiceAnimator'
@@ -13,7 +13,6 @@ function PawnDragger({ pawnRefs }) {
   return (
     pawnRefs.length > 0 && (
       <DragControls
-        transformGroup={false}
         objects={pawnRefs}
         camera={camera}
         domElement={gl.domElement}
@@ -21,7 +20,7 @@ function PawnDragger({ pawnRefs }) {
         onDragEnd={(e) => {
           document.body.style.cursor = 'default'
 
-          // Optional: Snap to grid
+          // Optional grid snap
           const tileSize = 1
           const pos = e.object.position
           pos.set(
@@ -29,8 +28,6 @@ function PawnDragger({ pawnRefs }) {
             pos.y,
             Math.round(pos.z / tileSize) * tileSize
           )
-
-          console.log(`Dropped: ${e.object.name} →`, pos)
         }}
       />
     )
@@ -53,25 +50,21 @@ export default function LudoCanvas() {
         <directionalLight position={[-3, 0.5, 3]} intensity={1.2} castShadow />
         <Environment preset='sunset' />
 
-        {/* ✅ Drag Controller for Pawns */}
         <PawnDragger pawnRefs={pawnRefs} />
 
-        {/* 🧩 Ludo Game Assets */}
-        <LudoBoard position={[-1.5, 0, 0]} scale={[1.2, 1.2, 1.2]} setPawnRefs={setPawnRefs} />
+        <Suspense fallback={null}>
+          <LudoBoard position={[-1.5, 0, 0]} scale={[1.2, 1.2, 1.2]} setPawnRefs={setPawnRefs} />
+        </Suspense>
 
-        {/* 🎲 Dice */}
         <group ref={diceRef}>
           <Dice position={[4, 0.5, 0]} scale={[9, 9, 9]} />
         </group>
 
-        {/* 🌀 Dice Animator */}
         <DiceAnimator diceRef={diceRef} trigger={triggerRoll} onFinish={() => setTriggerRoll(false)} />
 
-        {/* 🚫 Orbit Controls: Locked View */}
         <OrbitControls enableRotate={false} enableZoom={false} enablePan={false} target={[0, 0, 0]} />
       </Canvas>
 
-      {/* 🎯 Roll Dice Button */}
       <div className='absolute bottom-6 left-1/2 transform -translate-x-1/2'>
         <button
           onClick={handleRollDice}
