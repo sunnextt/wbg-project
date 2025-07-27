@@ -69,10 +69,6 @@ export default function LudoBoard(props) {
 
   return (
     <group {...props} dispose={null}>
-      <group position={[-0.856, 0.465, -1.715]} rotation={[Math.PI / 2, 0, 0]} scale={11.346}>
-        <mesh castShadow receiveShadow geometry={nodes.Object_40.geometry} material={materials.DICE_M} />
-        <mesh castShadow receiveShadow geometry={nodes.Object_41.geometry} material={materials['Material.002']} />
-      </group>
       
       {/* Board components */}
       <mesh castShadow receiveShadow geometry={nodes.Object_6.geometry} material={materials['LUDO_BOARD_UPPER.001']} position={[-0.841, 0.215, -1.715]} scale={14.023} />
