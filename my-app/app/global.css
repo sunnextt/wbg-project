@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+.Toastify__toast-container {
+  z-index: 9999;
+}
 
 @layer base {
   * {

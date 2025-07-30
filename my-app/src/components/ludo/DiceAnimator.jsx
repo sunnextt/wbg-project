@@ -58,7 +58,7 @@ export default function DiceAnimator({ diceRef, trigger, onFinish }) {
         // Switch to showing result phase
         animationRef.current.phase = 'showing-result'
         animationRef.current.elapsed = 0
-        animationRef.current.duration = 1.5 // Time to show result
+        animationRef.current.duration = 2.5 // Time to show result
         
         // Set dice to show the result
         setDiceRotation(diceRef.current, diceResult)
@@ -70,7 +70,7 @@ export default function DiceAnimator({ diceRef, trigger, onFinish }) {
         // Switch to returning phase
         animationRef.current.phase = 'returning'
         animationRef.current.elapsed = 0
-        animationRef.current.duration = 0.8 // Return duration
+        animationRef.current.duration = 1 // Return duration
       }
     }
     else if (animationRef.current.phase === 'returning') {
@@ -114,7 +114,7 @@ export default function DiceAnimator({ diceRef, trigger, onFinish }) {
           resultShown: false
         }
         
-        onFinish()
+        onFinish(diceResult)
       }
     }
   })
