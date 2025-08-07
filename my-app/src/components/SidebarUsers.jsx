@@ -16,31 +16,80 @@ export default function SidebarUsers() {
   const [broadcastMessages, setBroadcastMessages] = useState([])
   const [messageInput, setMessageInput] = useState({})
   const [showBroadcastChat, setShowBroadcastChat] = useState(false)
+  const [socketConnected, setSocketConnected] = useState(false)
+  const [authError, setAuthError] = useState(null)
   const socketRef = useRef(null)
   const messagesEndRef = useRef({})
 
   useEffect(() => {
-    if (user && token) {
-      socketRef.current = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000', {
-        query: { uid: user.uid },
-      })
+    if (!user || !token) return
 
-      socketRef.current.on('onlineUsers', (userIds) => {
-        fetchUserDetails(userIds)
-      })
+    // Initialize socket connection with proper authentication
+    const socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000', {
+      auth: {
+        token: token // Send the Firebase auth token
+      },
+      query: {
+        uid: user.uid // Still include UID in query for legacy support if needed
+      },
+      transports: ['websocket'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    })
 
-      socketRef.current.on('privateMessage', ({ from, message, timestamp }) => {
-        setMessages((prev) => ({
-          ...prev,
-          [from]: [...(prev[from] || []), { from, message, timestamp }],
-        }))
-      })
+    socketRef.current = socket
 
-      socketRef.current.on('broadcastMessage', ({ from, username, message, timestamp }) => {
-        setBroadcastMessages((prev) => [...prev, { from, username, message, timestamp }])
-      })
+    // Connection established
+    socket.on('connect', () => {
+      console.log('Socket connected')
+      setSocketConnected(true)
+      setAuthError(null)
+    })
 
-      return () => {
+    // Connection error
+    socket.on('connect_error', (err) => {
+      console.error('Socket connection error:', err)
+      setSocketConnected(false)
+      
+      // Specific handling for authentication errors
+      if (err.message.includes('Authentication error') || err.message.includes('Unauthorized')) {
+        setAuthError('Authentication failed. Please refresh the page.')
+      }
+    })
+
+    // Disconnected
+    socket.on('disconnect', (reason) => {
+      console.log('Socket disconnected:', reason)
+      setSocketConnected(false)
+    })
+
+    // Online users update
+    socket.on('onlineUsers', (userIds) => {
+      fetchUserDetails(userIds)
+    })
+
+    // Private messages
+    socket.on('privateMessage', ({ from, message, timestamp }) => {
+      setMessages((prev) => ({
+        ...prev,
+        [from]: [...(prev[from] || []), { from, message, timestamp }],
+      }))
+    })
+
+    // Broadcast messages
+    socket.on('broadcastMessage', ({ from, username, message, timestamp }) => {
+      setBroadcastMessages((prev) => [...prev, { from, username, message, timestamp }])
+    })
+
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.off('connect')
+        socketRef.current.off('connect_error')
+        socketRef.current.off('disconnect')
+        socketRef.current.off('onlineUsers')
+        socketRef.current.off('privateMessage')
+        socketRef.current.off('broadcastMessage')
         socketRef.current.disconnect()
       }
     }
@@ -65,6 +114,7 @@ export default function SidebarUsers() {
       console.error('Failed to fetch user details:', err)
     }
   }
+
 
   const scrollToBottom = (chatId) => {
     messagesEndRef.current[chatId]?.scrollIntoView({ behavior: 'smooth' })
@@ -136,9 +186,11 @@ export default function SidebarUsers() {
 
   return (
     <>
-      <div className='bg-white p-4 rounded-lg shadow-lg w-full max-h-[500px] overflow-y-auto'>
+         <div className='bg-white p-4 rounded-lg shadow-lg w-full max-h-[500px] overflow-y-auto'>
         <div className='flex justify-between items-center mb-3'>
-          <h3 className='font-bold text-gray-800 text-base'>🟢 Online Users</h3>
+          <h3 className='font-bold text-gray-800 text-base'>
+            {socketConnected ? '🟢' : '🔴'} Online Users
+          </h3>
           <span
             className='text-xs text-blue-600 font-semibold cursor-pointer hover:underline'
             onClick={() => setShowBroadcastChat((prev) => !prev)}
@@ -146,11 +198,30 @@ export default function SidebarUsers() {
             Group Chat
           </span>
         </div>
+        
+        {authError && (
+          <div className='text-xs text-red-500 mb-2 p-2 bg-red-50 rounded'>
+            {authError}
+            <button 
+              onClick={() => window.location.reload()}
+              className='ml-2 text-blue-600 hover:underline'
+            >
+              Refresh
+            </button>
+          </div>
+        )}
+        
+        {!authError && !socketConnected && (
+          <div className='text-xs text-yellow-600 mb-2'>
+            Connecting to chat service...
+          </div>
+        )}
+
         <ul className='space-y-2'>
           <AnimatePresence>
             {onlineUsers.length === 0 ? (
               <motion.li initial={{ opacity: 0 }} animate={{ opacity: 1 }} className='text-sm text-gray-500'>
-                No users online
+                {socketConnected ? 'No users online' : 'Loading...'}
               </motion.li>
             ) : (
               onlineUsers.map((onlineUser) => (
@@ -160,7 +231,9 @@ export default function SidebarUsers() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
                   onClick={() => toggleChat(onlineUser)}
-                  className='flex items-center gap-2 cursor-pointer hover:bg-blue-50 p-2 rounded transition'
+                  className={`flex items-center gap-2 p-2 rounded transition ${
+                    socketConnected ? 'cursor-pointer hover:bg-blue-50' : 'opacity-50'
+                  }`}
                 >
                   <div className='w-8 h-8 bg-blue-200 rounded-full flex items-center justify-center font-bold text-blue-800'>
                     {onlineUser.username[0]?.toUpperCase() || '?'}

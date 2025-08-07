@@ -11,7 +11,7 @@ export default function LudoGamePage() {
   const { gameId } = useParams()
   const {
     gameState,
-    players,
+    players = [],
     gameStatus,
     currentTurn,
     joinGame,
@@ -62,6 +62,8 @@ export default function LudoGamePage() {
               currentTurn={currentTurn}
               currentPlayerId={currentPlayerId}
               onRollDice={handleDiceRoll}
+              gameState={gameState}
+              onPawnMove={makeMove}
             />
 
             <GameControls

@@ -1,7 +1,6 @@
-// app/page.jsx
 'use client'
 import { useState, useEffect } from 'react'
-import { collection, query, where, onSnapshot, addDoc } from 'firebase/firestore'
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useAuth } from '@/lib/AuthContext'
 import FeaturedBanner from '@/src/components/FeaturedBanner'
@@ -10,6 +9,8 @@ import LobbyItem from '@/src/components/LobbyItem'
 import PlayerCard from '@/src/components/PlayerCard'
 import SidebarFriends from '@/src/components/SidebarUsers'
 import Link from 'next/link'
+import { toast } from 'react-toastify'
+import 'react-toastify/dist/ReactToastify.css'
 
 export default function Home() {
   const { user } = useAuth()
@@ -20,18 +21,26 @@ export default function Home() {
   useEffect(() => {
     const q = query(
       collection(db, 'games'),
-      where('status', '==', 'waiting')
+      where('status', 'in', ['waiting', 'playing']) // Show both waiting and active games
     )
     
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const lobbyData = []
       querySnapshot.forEach((doc) => {
-        lobbyData.push({
-          id: doc.id,
-          ...doc.data()
-        })
+        const data = doc.data()
+        // Only include games that aren't cancelled or finished
+        if (!['cancelled', 'finished'].includes(data.status)) {
+          lobbyData.push({
+            id: doc.id,
+            ...data
+          })
+        }
       })
       setLobbies(lobbyData)
+      setLoading(false)
+    }, (error) => {
+      console.error('Error fetching lobbies:', error)
+      toast.error('Failed to load game lobbies')
       setLoading(false)
     })
 
@@ -39,25 +48,37 @@ export default function Home() {
   }, [])
 
   const createNewLobby = async () => {
-    if (!user) return
+    if (!user) {
+      toast.error('You must be logged in to create a lobby')
+      return
+    }
     
     try {
       const newLobby = {
         title: `${user.displayName || user.email.split('@')[0]}'s Game`,
         status: 'waiting',
+        creatorId: user.uid, // Important for security rules
         players: [{
           id: user.uid,
           name: user.displayName || user.email.split('@')[0],
-          color: 'green',
-          ready: false
+          color: 'green', // Default color for creator
+          ready: false,
+          position: 0
         }],
-        createdAt: new Date(),
-        gameType: 'ludo'
+        createdAt: serverTimestamp(), // Use server timestamp
+        gameType: 'ludo',
+        currentTurn: null,
+        diceValue: 0,
+        maxPlayers: 4
       }
       
-      await addDoc(collection(db, 'games'), newLobby)
+      const docRef = await addDoc(collection(db, 'games'), newLobby)
+      toast.success('Lobby created successfully!')
+      return docRef.id
     } catch (error) {
       console.error('Error creating lobby:', error)
+      toast.error('Failed to create lobby')
+      throw error
     }
   }
 
@@ -72,7 +93,7 @@ export default function Home() {
           <div className="flex justify-end">
             <button 
               onClick={createNewLobby}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition-colors disabled:bg-indigo-400 disabled:cursor-not-allowed"
               disabled={!user}
             >
               Create New Lobby
@@ -110,10 +131,11 @@ export default function Home() {
                     key={lobby.id}
                     id={lobby.id}
                     status={lobby.status}
-                    title={lobby.title || 'Ludo Game'}
-                    players={`${lobby.players?.length || 0}/4`}
-                    tag="Ludo"
+                    title={lobby.title || `${lobby.players?.[0]?.name || 'Unknown'}'s Game`}
+                    players={`${lobby.players?.length || 0}/${lobby.maxPlayers || 4}`}
+                    tag={lobby.gameType || 'Ludo'}
                     creator={lobby.players?.[0]?.name}
+                    isPlaying={lobby.status === 'playing'}
                   />
                 ))}
               </div>
