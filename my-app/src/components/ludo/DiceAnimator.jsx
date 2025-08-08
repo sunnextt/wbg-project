@@ -6,13 +6,12 @@ import * as THREE from 'three'
 export default function DiceAnimator({ diceRef, trigger, onFinish }) {
   const animationRef = useRef({
     started: false,
-    duration: 1.2, // seconds
+    duration: 1.2, 
     elapsed: 0
   })
 
   const originalRotation = useRef(new THREE.Euler())
 
-  // Reset animation when trigger changes
   useEffect(() => {
     if (!diceRef) return
 

@@ -14,13 +14,11 @@ const LudoBoard = forwardRef((props, ref) => {
   const diceRef = useRef();
   const controlsRef = useRef();
 
-  // Expose the diceRef as an actual THREE mesh ref
   useImperativeHandle(ref, () => ({
     diceRef: diceRef.current
   }));
 
 
-  // Initialize pawns with positions from gameState if available
   const initialPawns = [
     // Green pawns
     { id: 1, geo: nodes.Object_4.geometry, mat: materials.LUDO_COIN_M, pos: [2.232, 0.253, 0.711], scale: 12.073 },

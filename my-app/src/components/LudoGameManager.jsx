@@ -1,4 +1,3 @@
-// components/LudoGameManager.jsx
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/lib/AuthContext'
@@ -14,7 +13,7 @@ export default function useLudoGameManager(gameId) {
   const socket = useSocket()
   const [gameState, setGameState] = useState(null)
   const [players, setPlayers] = useState([])
-  const [gameStatus, setGameStatus] = useState('loading') // loading, waiting, playing, finished
+  const [gameStatus, setGameStatus] = useState('loading') 
   const [currentTurn, setCurrentTurn] = useState(null)
   const [error, setError] = useState(null)
   const [pendingMove, setPendingMove] = useState(null)
@@ -64,7 +63,6 @@ useEffect(() => {
 
   socket.emit('join-game', gameId);
 
-  // Handle pawn movements
   const handlePawnMove = (data) => {
     if (data.playerId !== user?.uid) {
       setLastMoveTimestamp(data.timestamp);
@@ -79,7 +77,6 @@ useEffect(() => {
     }
   };
 
-  // Handle dice roll results
   const handleDiceRolled = (data) => {
     setGameState(prev => ({
       ...prev,
@@ -93,19 +90,17 @@ useEffect(() => {
     }));
   };
 
-  // Handle dice roll start
   const handleDiceRollStart = ({ playerId, timestamp }) => {
     if (playerId !== user?.uid) {
       setIsDiceRolling(true);
       setDiceRollStartTime(timestamp);
       setGameState(prev => ({
         ...prev,
-        diceValue: 0 // Reset while rolling
+        diceValue: 0
       }));
     }
   };
 
-  // Handle dice roll completion
   const handleDiceRollComplete = ({ playerId, value, timestamp }) => {
     setIsDiceRolling(false);
     setGameState(prev => ({
@@ -120,7 +115,6 @@ useEffect(() => {
     }));
   };
 
-  // Handle move errors
   const handleMoveError = (error) => {
     toast.error(`Move failed: ${error.message}`);
     if (pendingMove?.pawnId === error.pawnId) {
@@ -128,13 +122,11 @@ useEffect(() => {
     }
   };
 
-  // Handle player disconnections
   const handlePlayerDisconnected = ({ playerId }) => {
     const playerName = players.find(p => p.id === playerId)?.name || 'A player';
     toast.warning(`${playerName} disconnected`);
   };
 
-  // Register all socket listeners
   socket.on('pawn-move', handlePawnMove);
   socket.on('dice-rolled', handleDiceRolled);
   socket.on('dice-roll-start', handleDiceRollStart);
@@ -143,7 +135,6 @@ useEffect(() => {
   socket.on('player-disconnected', handlePlayerDisconnected);
 
   return () => {
-    // Clean up all socket listeners
     socket.off('pawn-move', handlePawnMove);
     socket.off('dice-rolled', handleDiceRolled);
     socket.off('dice-roll-start', handleDiceRollStart);
@@ -184,7 +175,6 @@ useEffect(() => {
         throw new Error('Game is full (max 4 players)')
       }
 
-      // Color assignment logic
       let availableColor;
       if (gameData.players.length === 0) {
         availableColor = 'green'; 
@@ -260,8 +250,7 @@ const startGame = async () => {
     // Start the game (any player can start)
     await updateDoc(gameRef, {
       status: 'playing',
-      currentTurn: gameData.players[0].id, // First player starts
-      startedAt: serverTimestamp(),
+      currentTurn: gameData.players[0].id, 
       diceValue: 0,
       lastMove: null,
     });
@@ -311,19 +300,16 @@ const leaveGame = async () => {
         players: updatedPlayers
       };
 
-      // If game is active, mark as resigned
       if (gameData.status === 'playing') {
         updateData.players = updatedPlayers.map(p => 
           p.id === user.uid ? { ...p, resigned: true } : p
         );
         
-        // Pass turn if it was their turn
         if (gameData.currentTurn === user.uid) {
           updateData.currentTurn = getNextPlayerId(updatedPlayers, user.uid);
         }
       }
 
-      // Transfer creator if needed
       if (gameData.creatorId === user.uid) {
         updateData.creatorId = updatedPlayers[0]?.id || '';
       }
@@ -331,7 +317,6 @@ const leaveGame = async () => {
       transaction.update(gameRef, updateData);
     });
 
-    // Notify other players
     socket?.emit('player-left', { gameId, playerId: user.uid });
     toast.success('You have left the game');
     return true;
@@ -369,7 +354,6 @@ const getNextPlayerId = (players, currentPlayerId) => {
     const player = players.find((p) => p.id === playerId)
     if (!player) return false
 
-    // Check if all pawns are in finish position
     return player.pawns.every((pawn) => pawn.position === 'finish')
   }
 
@@ -448,11 +432,9 @@ const checkValidMoves = (pawns, diceValue) => {
     if (pawn.position === 'home') {
       return diceValue === 6
     }
-    // Check if pawn is already in finish position
     if (pawn.position === 'finish') {
       return false
     }
-    // For pawns on the board, any move is valid
     return true
   })
 }
@@ -485,7 +467,6 @@ const makeMove = useCallback(async (moveData) => {
     return false;
   }
 
-  // Validate it's the player's turn
   if (gameState.currentTurn !== user.uid) {
     toast.error('Not your turn!');
     return false;
@@ -536,11 +517,6 @@ const makeMove = useCallback(async (moveData) => {
         ? [...currentPlayer.pawns] 
         : Array(4).fill({ position: 'home' });
 
-      // Validate the move
-      // if (!isValidMove(currentPlayer, pawnIndex, moveData.newPosition, currentGameState.diceValue)) {
-      //   throw new Error('Invalid move according to game rules');
-      // }
-
       // Update the pawn position
       playerPawns[pawnIndex] = {
         ...playerPawns[pawnIndex],
@@ -566,7 +542,7 @@ const makeMove = useCallback(async (moveData) => {
           pawnId: moveData.pawnId,
           timestamp: serverTimestamp()
         },
-        diceValue: 0, // Reset dice after move
+        diceValue: 0, 
         ...(hasWon ? {
           status: 'finished',
           winner: user.uid,
@@ -600,27 +576,6 @@ const makeMove = useCallback(async (moveData) => {
     return false;
   }
 }, [user, gameState, socket, gameId]);
-
-const isValidMove = (player, pawnIndex, newPosition, diceValue) => {
-  // Ensure pawns exists and is an array
-  const pawns = Array.isArray(player.pawns) ? player.pawns : [];
-  const pawn = pawns[pawnIndex];
-  
-  if (!pawn) return false;
-
-  // Check if pawn is in home and needs a 6 to move out
-  if (pawn.position === 'home' && diceValue !== 6) {
-    return false;
-  }
-
-  // Check if pawn is already finished
-  if (pawn.position === 'finish') {
-    return false;
-  }
-
-  // Add additional game-specific validation here
-  return true;
-};
 
 
   return {
