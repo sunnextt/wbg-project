@@ -1,10 +1,8 @@
 'use client'
-
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Environment } from '@react-three/drei'
 import { useEffect, useRef, useState } from 'react'
 import LudoBoard from './LudoBoard'
-import Dice from './Dice'
 import DiceAnimator from './DiceAnimator'
 
 export default function LudoCanvas({
@@ -17,12 +15,11 @@ export default function LudoCanvas({
   gameState,
   onPawnMove
 }) {
-  const diceRef = useRef()
+  const ludoBoardRef = useRef()
   const [triggerRoll, setTriggerRoll] = useState(false)
   const [localDiceValue, setLocalDiceValue] = useState(0)
   const [currentTurnName, setCurrentTurnName] = useState('')
 
-  // Sync dice value with game state
   useEffect(() => {
     if (gameState?.diceValue && gameState.diceValue !== localDiceValue) {
       setLocalDiceValue(gameState.diceValue)
@@ -37,14 +34,15 @@ export default function LudoCanvas({
   const handleRollComplete = (result) => {
     console.log('Dice roll complete:', result)
     setLocalDiceValue(result)
-    onRollDice(result) // This should update the game state
+    onRollDice(result)
+    // Only stop triggering after the animation finishes
     setTriggerRoll(false)
   }
 
   const handleRollDice = () => {
     if (canRollDice()) {
       setTriggerRoll(true)
-      setLocalDiceValue(0) // Reset dice value while rolling
+      setLocalDiceValue(0)
     }
   }
 
@@ -76,17 +74,18 @@ export default function LudoCanvas({
   return (
     <div className='relative w-full h-screen overflow-hidden flex items-center justify-center bg-gradient-to-br from-blue-900 to-purple-600'>
       <div className="absolute inset-0 bg-[url('/images/ludo-bg.jpg')] bg-cover bg-center opacity-10 blur-sm z-0 pointer-events-none" />
-       <Canvas
+      <Canvas
         shadows
-        camera={{ position: [0, 25, 0], fov: 45 }}
+        camera={{ position: [0, 10, 0], fov: 45 }}
         gl={{ preserveDrawingBuffer: true }}
       >
         <ambientLight intensity={0.6} />
         <directionalLight position={[-3, 10, 3]} intensity={1.2} castShadow />
         <Environment preset="sunset" />
 
-        <group scale={[1.6, 1.6, 1.6]}>
+        <group scale={[0.65, 0.65, 0.65]}>
           <LudoBoard 
+            ref={ludoBoardRef}
             position={[0, 0, 0]} 
             gameState={gameState}
             currentPlayerId={currentPlayerId}
@@ -95,15 +94,13 @@ export default function LudoCanvas({
           />
         </group>
 
-        <group ref={diceRef}>
-          <Dice position={[8, 0.5, 0]} scale={[9, 9, 9]} renderOrder={10} />
-        </group>
-
-        <DiceAnimator
-          diceRef={diceRef}
-          trigger={triggerRoll} 
-          onFinish={handleRollComplete}
-        />
+        {ludoBoardRef.current?.diceRef && (
+          <DiceAnimator
+            diceRef={ludoBoardRef.current.diceRef}
+            trigger={triggerRoll}
+            onFinish={handleRollComplete}
+          />
+        )}
 
         <OrbitControls
           enableRotate={false}
@@ -112,9 +109,6 @@ export default function LudoCanvas({
           target={[0, 0, 0]}
         />
       </Canvas>
-
-
-      
 
       <div className="absolute bottom-8 left-0 right-0 flex justify-center">
         <button
@@ -131,7 +125,6 @@ export default function LudoCanvas({
         </button>
       </div>
 
-      {/* Always show dice value from game state if available */}
       {(gameState?.diceValue || localDiceValue > 0) && (
         <div className="absolute top-4 right-4 bg-black bg-opacity-70 text-white p-3 rounded-lg z-10">
           Dice: {gameState?.diceValue || localDiceValue}

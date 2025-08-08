@@ -2,11 +2,12 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/lib/AuthContext'
-import { doc, getDoc, onSnapshot, updateDoc, arrayRemove, runTransaction, serverTimestamp,deleteDoc } from 'firebase/firestore'
+import { doc, getDoc, onSnapshot, updateDoc, runTransaction, serverTimestamp, } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { toast } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import { useSocket } from '@/lib/socket'
+
 
 export default function useLudoGameManager(gameId) {
   const { user } = useAuth()
@@ -18,6 +19,8 @@ export default function useLudoGameManager(gameId) {
   const [error, setError] = useState(null)
   const [pendingMove, setPendingMove] = useState(null)
   const [lastMoveTimestamp, setLastMoveTimestamp] = useState(0)
+  const [isDiceRolling, setIsDiceRolling] = useState(false)
+  const [diceRollStartTime, setDiceRollStartTime] = useState(0)
 
   const currentPlayerId = user?.uid || null
 
@@ -117,6 +120,47 @@ export default function useLudoGameManager(gameId) {
     }
   }, [socket, gameId, user?.uid, players, pendingMove])
 
+  
+  // Add this socket effect for dice synchronization
+
+  useEffect(() => {
+  if (!socket || !gameId) return
+
+  // Handle dice roll start from other players
+  const handleDiceRollStart = ({ playerId, timestamp }) => {
+    if (playerId !== user?.uid) {
+      setIsDiceRolling(true)
+      setDiceRollStartTime(timestamp)
+      setGameState(prev => ({
+        ...prev,
+        diceValue: 0 // Reset while rolling
+      }))
+    }
+  }
+
+  // Handle dice roll complete from other players
+  const handleDiceRollComplete = ({ playerId, value, timestamp }) => {
+    setIsDiceRolling(false)
+    setGameState(prev => ({
+      ...prev,
+      diceValue: value,
+      lastAction: {
+        type: 'dice_roll',
+        value,
+        playerId,
+        timestamp
+      }
+    }))
+  }
+
+  socket.on('dice-roll-start', handleDiceRollStart)
+  socket.on('dice-roll-complete', handleDiceRollComplete)
+
+  return () => {
+    socket.off('dice-roll-start', handleDiceRollStart)
+    socket.off('dice-roll-complete', handleDiceRollComplete)
+  }
+}, [socket, gameId, user?.uid])
 
   const joinGame = async () => {
   if (!user) {
@@ -345,16 +389,30 @@ const handleDiceRoll = useCallback(async (diceValue) => {
   }
 
   try {
-    const gameRef = doc(db, 'games', gameId)
-    const gameDoc = await getDoc(gameRef)
-    
-    if (!gameDoc.exists()) throw new Error("Game document doesn't exist")
-    const gameData = gameDoc.data()
-    
-    if (gameData.status !== 'playing') throw new Error("Game is not in playing state")
-    if (gameData.currentTurn !== user.uid) throw new Error("Turn changed before roll completed")
+    const timestamp = Date.now()
+    setIsDiceRolling(true)
+    setDiceRollStartTime(timestamp)
 
-    // Update game state immediately with the dice roll
+    // Notify all players that dice is rolling
+    socket.emit('dice-roll-start', {
+      gameId,
+      playerId: user.uid,
+      timestamp
+    })
+
+    // Update local state immediately
+    setGameState(prev => ({
+      ...prev,
+      diceValue: 0 // Reset while rolling
+    }))
+
+    // Wait for animation to complete (simulated delay)
+    await new Promise(resolve => setTimeout(resolve, 2000))
+
+    // Finalize the roll
+    setIsDiceRolling(false)
+    
+    const gameRef = doc(db, 'games', gameId)
     await updateDoc(gameRef, {
       diceValue,
       lastAction: {
@@ -365,31 +423,28 @@ const handleDiceRoll = useCallback(async (diceValue) => {
       }
     })
 
-    // Emit socket event for real-time update
-    socket.emit('dice-rolled', {
+    // Notify all players of the result
+    socket.emit('dice-roll-complete', {
       gameId,
       playerId: user.uid,
       value: diceValue,
-      timestamp: Date.now()
+      timestamp
     })
 
     if (diceValue === 6) {
       toast.success("You rolled a 6! Roll again")
     } else {
-      // If not 6, check if player has valid moves
-      const currentPlayer = gameData.players?.find(p => p.id === user.uid)
-      if (!currentPlayer) throw new Error("Player not found in game")
-      
-      const hasValidMoves = checkValidMoves(currentPlayer.pawns || [], diceValue)
-      if (!hasValidMoves) {
+      const currentPlayer = gameState?.players?.find(p => p.id === user.uid)
+      if (!checkValidMoves(currentPlayer?.pawns || [], diceValue)) {
         await passTurn()
       }
     }
   } catch (error) {
     console.error("Dice roll error:", error)
     toast.error(`Dice roll failed: ${error.message}`)
+    setIsDiceRolling(false)
   }
-}, [user, socket, gameId, currentTurn])
+}, [user, socket, gameId, currentTurn, gameState?.players])
 
 const checkValidMoves = (pawns, diceValue) => {
   if (!Array.isArray(pawns)) {
@@ -590,6 +645,8 @@ const isValidMove = (player, pawnIndex, newPosition, diceValue) => {
     handleDiceRoll,
     checkValidMoves,
     passTurn,
+  isDiceRolling,
+  diceRollStartTime,
     currentPlayerId,
     isCurrentPlayer: currentTurn === user?.uid,
     isGameCreator: players[0]?.id === user?.uid,
