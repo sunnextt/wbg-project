@@ -2,7 +2,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/lib/AuthContext'
-import { doc, getDoc, onSnapshot, updateDoc, runTransaction, serverTimestamp, } from 'firebase/firestore'
+import { doc, getDoc, onSnapshot, updateDoc, arrayRemove, runTransaction, serverTimestamp,deleteDoc } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { toast } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
@@ -59,26 +59,27 @@ export default function useLudoGameManager(gameId) {
     return () => unsubscribe()
   }, [gameId])
 
-  useEffect(() => {
-    if (!socket || !gameId) return
+useEffect(() => {
+  if (!socket || !gameId) return;
 
-    socket.emit('join-game', gameId)
+  socket.emit('join-game', gameId);
 
-    const handlePawnMove = (data) => {
-      if (data.playerId !== user?.uid) {
-        setLastMoveTimestamp(data.timestamp)
-        setGameState(prev => ({
-          ...prev,
-          players: processMove(prev.players, data.playerId, {
-            pawnId: data.pawnId,
-            newPosition: data.newPosition,
-            action: 'move'
-          })
-        }))
-      }
+  // Handle pawn movements
+  const handlePawnMove = (data) => {
+    if (data.playerId !== user?.uid) {
+      setLastMoveTimestamp(data.timestamp);
+      setGameState(prev => ({
+        ...prev,
+        players: processMove(prev.players, data.playerId, {
+          pawnId: data.pawnId,
+          newPosition: data.newPosition,
+          action: 'move'
+        })
+      }));
     }
+  };
 
-    // Handle dice rolls
+  // Handle dice roll results
   const handleDiceRolled = (data) => {
     setGameState(prev => ({
       ...prev,
@@ -89,58 +90,24 @@ export default function useLudoGameManager(gameId) {
         playerId: data.playerId,
         timestamp: new Date(data.timestamp)
       }
-    }))
-  }
+    }));
+  };
 
-    // Handle move errors
-    const handleMoveError = (error) => {
-      toast.error(`Move failed: ${error.message}`)
-      if (pendingMove?.pawnId === error.pawnId) {
-        setPendingMove(null)
-      }
-    }
-
-    // Handle player disconnections
-    const handlePlayerDisconnected = ({ playerId }) => {
-      const playerName = players.find(p => p.id === playerId)?.name || 'A player'
-      toast.warning(`${playerName} disconnected`)
-    }
-
-    socket.on('pawn-move', handlePawnMove)
-    socket.on('dice-rolled', handleDiceRolled)
-    socket.on('move-error', handleMoveError)
-    socket.on('player-disconnected', handlePlayerDisconnected)
-
-    return () => {
-      socket.off('pawn-move', handlePawnMove)
-      socket.off('dice-rolled', handleDiceRolled)
-      socket.off('move-error', handleMoveError)
-      socket.off('player-disconnected', handlePlayerDisconnected)
-      socket.emit('leave-game', gameId)
-    }
-  }, [socket, gameId, user?.uid, players, pendingMove])
-
-  
-  // Add this socket effect for dice synchronization
-
-  useEffect(() => {
-  if (!socket || !gameId) return
-
-  // Handle dice roll start from other players
+  // Handle dice roll start
   const handleDiceRollStart = ({ playerId, timestamp }) => {
     if (playerId !== user?.uid) {
-      setIsDiceRolling(true)
-      setDiceRollStartTime(timestamp)
+      setIsDiceRolling(true);
+      setDiceRollStartTime(timestamp);
       setGameState(prev => ({
         ...prev,
         diceValue: 0 // Reset while rolling
-      }))
+      }));
     }
-  }
+  };
 
-  // Handle dice roll complete from other players
+  // Handle dice roll completion
   const handleDiceRollComplete = ({ playerId, value, timestamp }) => {
-    setIsDiceRolling(false)
+    setIsDiceRolling(false);
     setGameState(prev => ({
       ...prev,
       diceValue: value,
@@ -150,17 +117,42 @@ export default function useLudoGameManager(gameId) {
         playerId,
         timestamp
       }
-    }))
-  }
+    }));
+  };
 
-  socket.on('dice-roll-start', handleDiceRollStart)
-  socket.on('dice-roll-complete', handleDiceRollComplete)
+  // Handle move errors
+  const handleMoveError = (error) => {
+    toast.error(`Move failed: ${error.message}`);
+    if (pendingMove?.pawnId === error.pawnId) {
+      setPendingMove(null);
+    }
+  };
+
+  // Handle player disconnections
+  const handlePlayerDisconnected = ({ playerId }) => {
+    const playerName = players.find(p => p.id === playerId)?.name || 'A player';
+    toast.warning(`${playerName} disconnected`);
+  };
+
+  // Register all socket listeners
+  socket.on('pawn-move', handlePawnMove);
+  socket.on('dice-rolled', handleDiceRolled);
+  socket.on('dice-roll-start', handleDiceRollStart);
+  socket.on('dice-roll-complete', handleDiceRollComplete);
+  socket.on('move-error', handleMoveError);
+  socket.on('player-disconnected', handlePlayerDisconnected);
 
   return () => {
-    socket.off('dice-roll-start', handleDiceRollStart)
-    socket.off('dice-roll-complete', handleDiceRollComplete)
-  }
-}, [socket, gameId, user?.uid])
+    // Clean up all socket listeners
+    socket.off('pawn-move', handlePawnMove);
+    socket.off('dice-rolled', handleDiceRolled);
+    socket.off('dice-roll-start', handleDiceRollStart);
+    socket.off('dice-roll-complete', handleDiceRollComplete);
+    socket.off('move-error', handleMoveError);
+    socket.off('player-disconnected', handlePlayerDisconnected);
+    socket.emit('leave-game', gameId);
+  };
+}, [socket, gameId, user?.uid, players, pendingMove]);
 
   const joinGame = async () => {
   if (!user) {
@@ -382,46 +374,45 @@ const getNextPlayerId = (players, currentPlayerId) => {
   }
 
 
-const handleDiceRoll = useCallback(async (diceValue) => {
+const handleDiceRoll = useCallback(async () => {
   if (!user || !socket || currentTurn !== user.uid) {
-    toast.error("It's not your turn to roll!")
-    return
+    toast.error("It's not your turn to roll!");
+    return;
   }
 
   try {
-    const timestamp = Date.now()
-    setIsDiceRolling(true)
-    setDiceRollStartTime(timestamp)
+    const timestamp = Date.now();
+    setIsDiceRolling(true);
+    setDiceRollStartTime(timestamp);
 
     // Notify all players that dice is rolling
     socket.emit('dice-roll-start', {
       gameId,
       playerId: user.uid,
       timestamp
-    })
-
-    // Update local state immediately
-    setGameState(prev => ({
-      ...prev,
-      diceValue: 0 // Reset while rolling
-    }))
+    });
 
     // Wait for animation to complete (simulated delay)
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    await new Promise(resolve => setTimeout(resolve, 1200));
 
-    // Finalize the roll
-    setIsDiceRolling(false)
-    
-    const gameRef = doc(db, 'games', gameId)
-    await updateDoc(gameRef, {
-      diceValue,
+    // Generate random result (ensure it's always 1-6)
+    const diceValue = Math.floor(Math.random() * 6) + 1;
+    setIsDiceRolling(false);
+
+    // Prepare the update data
+    const updateData = {
+      diceValue, // This is now guaranteed to be a number
       lastAction: {
         type: 'dice_roll',
         value: diceValue,
         playerId: user.uid,
         timestamp: serverTimestamp()
       }
-    })
+    };
+
+    // Update game state
+    const gameRef = doc(db, 'games', gameId);
+    await updateDoc(gameRef, updateData);
 
     // Notify all players of the result
     socket.emit('dice-roll-complete', {
@@ -429,22 +420,22 @@ const handleDiceRoll = useCallback(async (diceValue) => {
       playerId: user.uid,
       value: diceValue,
       timestamp
-    })
+    });
 
     if (diceValue === 6) {
-      toast.success("You rolled a 6! Roll again")
+      toast.success("You rolled a 6! Roll again");
     } else {
-      const currentPlayer = gameState?.players?.find(p => p.id === user.uid)
+      const currentPlayer = gameState?.players?.find(p => p.id === user.uid);
       if (!checkValidMoves(currentPlayer?.pawns || [], diceValue)) {
-        await passTurn()
+        await passTurn();
       }
     }
   } catch (error) {
-    console.error("Dice roll error:", error)
-    toast.error(`Dice roll failed: ${error.message}`)
-    setIsDiceRolling(false)
+    console.error("Dice roll error:", error);
+    toast.error(`Dice roll failed: ${error.message}`);
+    setIsDiceRolling(false);
   }
-}, [user, socket, gameId, currentTurn, gameState?.players])
+}, [user, socket, gameId, currentTurn, gameState?.players]);
 
 const checkValidMoves = (pawns, diceValue) => {
   if (!Array.isArray(pawns)) {
@@ -645,8 +636,6 @@ const isValidMove = (player, pawnIndex, newPosition, diceValue) => {
     handleDiceRoll,
     checkValidMoves,
     passTurn,
-  isDiceRolling,
-  diceRollStartTime,
     currentPlayerId,
     isCurrentPlayer: currentTurn === user?.uid,
     isGameCreator: players[0]?.id === user?.uid,

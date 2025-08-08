@@ -13,67 +13,48 @@ export default function LudoCanvas({
   currentPlayerId,
   onRollDice,
   gameState,
-  onPawnMove
+  onPawnMove,
+  isDiceRolling
 }) {
-  const ludoBoardRef = useRef()
-  const [triggerRoll, setTriggerRoll] = useState(false)
-  const [localDiceValue, setLocalDiceValue] = useState(0)
-  const [currentTurnName, setCurrentTurnName] = useState('')
+  const ludoBoardRef = useRef();
+  const [triggerRoll, setTriggerRoll] = useState(false);
+  const [currentTurnName, setCurrentTurnName] = useState('Unknown Player'); // Add this line
 
   useEffect(() => {
-    if (gameState?.diceValue && gameState.diceValue !== localDiceValue) {
-      setLocalDiceValue(gameState.diceValue)
-    }
-  }, [gameState?.diceValue])
+    const player = players.find(p => p.id === currentTurn);
+    setCurrentTurnName(player?.name || 'Unknown Player');
+  }, [currentTurn, players]);
 
-  useEffect(() => {
-    const player = players.find(p => p.id === currentTurn)
-    setCurrentTurnName(player?.name || '')
-  }, [currentTurn, players])
-
-  const handleRollComplete = (result) => {
-    console.log('Dice roll complete:', result)
-    setLocalDiceValue(result)
-    onRollDice(result)
-    // Only stop triggering after the animation finishes
+const handleRollComplete = (result) => {
     setTriggerRoll(false)
+    onRollDice(result)
   }
 
-  const handleRollDice = () => {
+  const handleRollClick = () => {
     if (canRollDice()) {
       setTriggerRoll(true)
-      setLocalDiceValue(0)
     }
   }
 
   const canRollDice = () => {
-    return !triggerRoll && 
-           currentPlayerId === currentTurn && 
+    return !isDiceRolling &&
+           currentPlayerId === currentTurn &&
            gameStatus === 'playing'
   }
 
   const getButtonText = () => {
-    if (triggerRoll) return 'Rolling...'
+    if (isDiceRolling) {
+      return currentPlayerId === currentTurn ? 'Rolling...' : `${currentTurnName} is rolling...`
+    }
     if (gameStatus !== 'playing') return 'Game Not Started'
     if (currentPlayerId === currentTurn) return 'ROLL DICE 🎲'
     return `Waiting for ${currentTurnName}`
   }
 
-  const handlePawnMove = (moveData) => {
-    if (onPawnMove) {
-      onPawnMove({
-        gameId,
-        playerId: currentPlayerId,
-        pawnId: `${moveData.color}-${moveData.pawnIndex}`,
-        newPosition: moveData.newPosition,
-        timestamp: Date.now()
-      })
-    }
-  }
-
   return (
     <div className='relative w-full h-screen overflow-hidden flex items-center justify-center bg-gradient-to-br from-blue-900 to-purple-600'>
       <div className="absolute inset-0 bg-[url('/images/ludo-bg.jpg')] bg-cover bg-center opacity-10 blur-sm z-0 pointer-events-none" />
+      
       <Canvas
         shadows
         camera={{ position: [0, 10, 0], fov: 45 }}
@@ -84,20 +65,18 @@ export default function LudoCanvas({
         <Environment preset="sunset" />
 
         <group scale={[0.65, 0.65, 0.65]}>
-          <LudoBoard 
-            ref={ludoBoardRef}
-            position={[0, 0, 0]} 
-            gameState={gameState}
-            currentPlayerId={currentPlayerId}
-            onPawnMove={handlePawnMove}
-            players={players}
-          />
-        </group>
+<LudoBoard 
+  ref={ludoBoardRef} 
+  gameState={gameState} 
+  currentPlayerId={currentPlayerId} 
+  onPawnMove={onPawnMove} 
+  players={players} 
+/>        </group>
 
         {ludoBoardRef.current?.diceRef && (
           <DiceAnimator
             diceRef={ludoBoardRef.current.diceRef}
-            trigger={triggerRoll}
+            trigger={isDiceRolling || triggerRoll}
             onFinish={handleRollComplete}
           />
         )}
@@ -112,24 +91,30 @@ export default function LudoCanvas({
 
       <div className="absolute bottom-8 left-0 right-0 flex justify-center">
         <button
-          onClick={handleRollDice}
+          onClick={handleRollClick}
+          disabled={!canRollDice()}
           className={`px-8 py-3 rounded-full font-bold text-lg shadow-lg transition-all
             ${canRollDice()
               ? 'bg-yellow-400 hover:bg-yellow-500 text-black'
               : 'bg-gray-500 text-gray-200 cursor-not-allowed'
             }
-            ${triggerRoll ? 'opacity-70 scale-95' : 'hover:scale-105'}`}
-          disabled={!canRollDice()}
+            ${isDiceRolling ? 'opacity-70 scale-95' : 'hover:scale-105'}`}
         >
           {getButtonText()}
         </button>
       </div>
 
-      {(gameState?.diceValue || localDiceValue > 0) && (
+      {gameState?.diceValue > 0 && !isDiceRolling && (
         <div className="absolute top-4 right-4 bg-black bg-opacity-70 text-white p-3 rounded-lg z-10">
-          Dice: {gameState?.diceValue || localDiceValue}
+          Dice: {gameState.diceValue}
         </div>
       )}
+     <div className="absolute top-4 left-4 bg-black bg-opacity-70 text-white p-3 rounded-lg z-20">
+        {currentPlayerId === currentTurn ? 
+          "Your turn!" : 
+          `${currentTurnName}'s turn`
+        }
+      </div>
     </div>
   )
 }
