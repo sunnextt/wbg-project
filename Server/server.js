@@ -8,7 +8,6 @@ const User = require('./models/User');
 const admin = require('./services/firebaseAdmin')
 
 
-
 const app = express();
 const server = http.createServer(app);
 const io = socketIO(server, {

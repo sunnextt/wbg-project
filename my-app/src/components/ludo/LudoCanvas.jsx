@@ -4,7 +4,6 @@ import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Environment } from '@react-three/drei'
 import { useEffect, useRef, useState } from 'react'
 import LudoBoard from './LudoBoard'
-import Dice from './Dice'
 import DiceAnimator from './DiceAnimator'
 
 export default function LudoCanvas({
@@ -15,9 +14,9 @@ export default function LudoCanvas({
   currentPlayerId,
   onRollDice,
   gameState,
-  onPawnMove
+  onPawnMove,
 }) {
-  const diceRef = useRef()
+  const ludoBoardRef = useRef();
   const [triggerRoll, setTriggerRoll] = useState(false)
   const [localDiceValue, setLocalDiceValue] = useState(0)
   const [currentTurnName, setCurrentTurnName] = useState('')
@@ -30,7 +29,7 @@ export default function LudoCanvas({
   }, [gameState?.diceValue])
 
   useEffect(() => {
-    const player = players.find(p => p.id === currentTurn)
+    const player = players.find((p) => p.id === currentTurn)
     setCurrentTurnName(player?.name || '')
   }, [currentTurn, players])
 
@@ -49,9 +48,7 @@ export default function LudoCanvas({
   }
 
   const canRollDice = () => {
-    return !triggerRoll && 
-           currentPlayerId === currentTurn && 
-           gameStatus === 'playing'
+    return !triggerRoll && currentPlayerId === currentTurn && gameStatus === 'playing'
   }
 
   const getButtonText = () => {
@@ -68,7 +65,7 @@ export default function LudoCanvas({
         playerId: currentPlayerId,
         pawnId: `${moveData.color}-${moveData.pawnIndex}`,
         newPosition: moveData.newPosition,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       })
     }
   }
@@ -76,53 +73,41 @@ export default function LudoCanvas({
   return (
     <div className='relative w-full h-screen overflow-hidden flex items-center justify-center bg-gradient-to-br from-blue-900 to-purple-600'>
       <div className="absolute inset-0 bg-[url('/images/ludo-bg.jpg')] bg-cover bg-center opacity-10 blur-sm z-0 pointer-events-none" />
-       <Canvas
-        shadows
-        camera={{ position: [0, 25, 0], fov: 45 }}
-        gl={{ preserveDrawingBuffer: true }}
-      >
+      <Canvas shadows camera={{ position: [0, 25, 0], fov: 45 }} gl={{ preserveDrawingBuffer: true }}>
         <ambientLight intensity={0.6} />
         <directionalLight position={[-3, 10, 3]} intensity={1.2} castShadow />
-        <Environment preset="sunset" />
+        <Environment preset='sunset' />
 
         <group scale={[1.6, 1.6, 1.6]}>
-          <LudoBoard 
-            position={[0, 0, 0]} 
+          <LudoBoard
+            position={[0, 0, 0]}
+            ref={ludoBoardRef}
             gameState={gameState}
             currentPlayerId={currentPlayerId}
             onPawnMove={handlePawnMove}
             players={players}
           />
         </group>
+        
+        {ludoBoardRef.current?.diceRef && (
+          <DiceAnimator
+            diceRef={ludoBoardRef.current.diceRef}
+            trigger={ triggerRoll}
+            onFinish={handleRollComplete}
+          />
+        )}
 
-        <group ref={diceRef}>
-          <Dice position={[8, 0.5, 0]} scale={[9, 9, 9]} renderOrder={10} />
-        </group>
-
-        <DiceAnimator
-          diceRef={diceRef}
-          trigger={triggerRoll} 
-          onFinish={handleRollComplete}
-        />
-
-        <OrbitControls
-          enableRotate={false}
-          enableZoom={false}
-          enablePan={false}
-          target={[0, 0, 0]}
-        />
+        <OrbitControls enableRotate={false} enableZoom={false} enablePan={false} target={[0, 0, 0]} />
       </Canvas>
 
-
-      
-
-      <div className="absolute bottom-8 left-0 right-0 flex justify-center">
+      <div className='absolute bottom-8 left-0 right-0 flex justify-center'>
         <button
           onClick={handleRollDice}
           className={`px-8 py-3 rounded-full font-bold text-lg shadow-lg transition-all
-            ${canRollDice()
-              ? 'bg-yellow-400 hover:bg-yellow-500 text-black'
-              : 'bg-gray-500 text-gray-200 cursor-not-allowed'
+            ${
+              canRollDice()
+                ? 'bg-yellow-400 hover:bg-yellow-500 text-black'
+                : 'bg-gray-500 text-gray-200 cursor-not-allowed'
             }
             ${triggerRoll ? 'opacity-70 scale-95' : 'hover:scale-105'}`}
           disabled={!canRollDice()}
@@ -133,10 +118,16 @@ export default function LudoCanvas({
 
       {/* Always show dice value from game state if available */}
       {(gameState?.diceValue || localDiceValue > 0) && (
-        <div className="absolute top-4 right-4 bg-black bg-opacity-70 text-white p-3 rounded-lg z-10">
+        <div className='absolute top-4 right-4 bg-black bg-opacity-70 text-white p-3 rounded-lg z-10'>
           Dice: {gameState?.diceValue || localDiceValue}
         </div>
       )}
+           <div className="absolute top-4 left-4 bg-black bg-opacity-70 text-white p-3 rounded-lg z-20">
+        {currentPlayerId === currentTurn ? 
+          "Your turn!" : 
+          `${currentTurnName}'s turn`
+        }
+      </div>
     </div>
   )
 }

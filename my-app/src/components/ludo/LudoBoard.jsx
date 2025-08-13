@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react'
+import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
 import { useGLTF } from '@react-three/drei'
 import { useThree, extend } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -6,13 +6,18 @@ import { DragControls } from 'three/examples/jsm/controls/DragControls'
 
 extend({ DragControls })
 
-export default function LudoBoard(props) {
+const LudoBoard = forwardRef((props, ref) => {
   const { nodes, materials } = useGLTF('/ludo_board_games.glb')
   const { gameState, currentPlayerId, onPawnMove, players } = props
   const { camera, gl, scene } = useThree()
   const groupRef = useRef()
-  const controlsRef = useRef()
-  
+  const diceRef = useRef();
+  const controlsRef = useRef();
+
+  useImperativeHandle(ref, () => ({
+    diceRef: diceRef.current
+  }));  
+
   // Initialize pawns with positions from gameState if available
   const initialPawns = [
     // Green pawns
@@ -196,7 +201,10 @@ export default function LudoBoard(props) {
     <group {...props} dispose={null}>
       <mesh castShadow receiveShadow geometry={nodes.Object_6.geometry} material={materials['LUDO_BOARD_UPPER.001']} position={[-0.841, 0.215, -1.715]} scale={14.023} />
       <mesh castShadow receiveShadow geometry={nodes.Object_8.geometry} material={materials.LUDO_BOARD_UPPER} position={[-0.841, 0.215, -1.715]} scale={14.023} />
-      
+     <group ref={diceRef} position={[5.178, 0.253, -1.668]} rotation={[Math.PI / 2, 0, 0]} scale={15}>
+        <mesh castShadow receiveShadow geometry={nodes.Object_40.geometry} material={materials.DICE_M} />
+        <mesh castShadow receiveShadow geometry={nodes.Object_41.geometry} material={materials['Material.002']} />
+      </group>
       <group ref={groupRef}>
         {pawns.map((pawn, index) => {
           const pawnColor = 
@@ -224,6 +232,8 @@ export default function LudoBoard(props) {
       </group>
     </group>
   )
-}
+});
 
 useGLTF.preload('/ludo_board_games.glb')
+
+export default LudoBoard;
