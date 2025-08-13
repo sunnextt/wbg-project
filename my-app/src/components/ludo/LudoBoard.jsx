@@ -51,25 +51,28 @@ const LudoBoard = forwardRef((props, ref) => {
   const activeColors = players?.map(player => player.color) || [];
   
   // Helper function to check if a pawn belongs to the current player
-  const isCurrentPlayerPawn = (pawnId) => {
-    if (!currentPlayerId) return false;
-    
-    const currentPlayer = players?.find(p => p.id === currentPlayerId);
-    if (!currentPlayer) return false;
-    
-    const colorMap = {
-      green: { start: 1, end: 4 },
-      red: { start: 5, end: 8 },
-      blue: { start: 9, end: 12 },
-      yellow: { start: 13, end: 16 }
-    };
-    
-    const pawnColor = Object.entries(colorMap).find(([_, range]) => 
-      pawnId >= range.start && pawnId <= range.end
-    )?.[0];
-    
-    return pawnColor === currentPlayer.color;
+const isCurrentPlayerPawn = (pawnId) => {
+  if (!currentPlayerId) return false;
+  
+  const currentPlayer = players?.find(p => p.id === currentPlayerId);
+  if (!currentPlayer) return false;
+  
+  // Map pawn IDs to colors
+  const colorMap = {
+    green: { start: 1, end: 4 },
+    red: { start: 5, end: 8 },
+    blue: { start: 9, end: 12 },
+    yellow: { start: 13, end: 16 }
   };
+  
+  // Find which color this pawn belongs to
+  const pawnColor = Object.entries(colorMap).find(([_, range]) => 
+    pawnId >= range.start && pawnId <= range.end
+  )?.[0];
+  
+  // Check if this color matches the current player's color
+  return pawnColor === currentPlayer.color;
+};
 
   useEffect(() => {
     if (gameState?.players) {
@@ -138,65 +141,92 @@ const LudoBoard = forwardRef((props, ref) => {
 
   const pawnRefs = useRef([])
   
-  useEffect(() => {
-    if (pawnRefs.current.length > 0) {
-      controlsRef.current = new DragControls(
-        pawnRefs.current,
-        camera,
-        gl.domElement
-      )
-      
-      controlsRef.current.addEventListener('dragstart', (event) => {
-        const pawnIndex = pawnRefs.current.findIndex(ref => ref === event.object)
-        if (pawnIndex === -1 || !isCurrentPlayerPawn(pawnIndex + 1)) {
-          controlsRef.current.cancel()
-          return
-        }
-        event.object.material.opacity = 0.8
-      })
-      
-      controlsRef.current.addEventListener('dragend', (event) => {
-        event.object.material.opacity = 1
-        
-        const pawnIndex = pawnRefs.current.findIndex(ref => ref === event.object)
-        if (pawnIndex === -1) return
-        
-        const newPosition = {
-          x: event.object.position.x,
-          y: event.object.position.y,
-          z: event.object.position.z
-        }
-        
-        const pawnId = pawnIndex + 1
-        let playerColor = ''
-        if (pawnId >= 1 && pawnId <= 4) playerColor = 'green'
-        else if (pawnId >= 5 && pawnId <= 8) playerColor = 'red'
-        else if (pawnId >= 9 && pawnId <= 12) playerColor = 'blue'
-        else if (pawnId >= 13 && pawnId <= 16) playerColor = 'yellow'
-        
-        const playerPawnIndex = (pawnId - 1) % 4
-        
-        if (onPawnMove && playerColor && currentPlayerId) {
-          onPawnMove({
-            playerId: currentPlayerId,
-            color: playerColor,
-            pawnIndex: playerPawnIndex,
-            newPosition
-          })
-        }
-      })
-      
-      controlsRef.current.enabled = (
-        gameState?.currentTurn === currentPlayerId && 
-        gameState?.diceValue > 0
-      )
-      
-      return () => {
-        controlsRef.current?.dispose()
-      }
-    }
-  }, [camera, gl, gameState?.currentTurn, currentPlayerId, gameState?.diceValue, onPawnMove])
+useEffect(() => {
+  // Cleanup previous controls
+  if (controlsRef.current) {
+    controlsRef.current.dispose();
+    controlsRef.current = null;
+  }
 
+  // Only setup controls if it's player's turn AND they've rolled dice
+  if (pawnRefs.current.length > 0 && 
+      gameState?.currentTurn === currentPlayerId && 
+      gameState?.diceValue > 0) {
+      
+    controlsRef.current = new DragControls(
+      pawnRefs.current,
+      camera,
+      gl.domElement
+    );
+
+    controlsRef.current.addEventListener('dragstart', (event) => {
+      const pawnIndex = pawnRefs.current.findIndex(ref => ref === event.object);
+      if (pawnIndex === -1) {
+        controlsRef.current?.deactivate();
+        return;
+      }
+
+      const pawnId = pawnIndex + 1;
+      
+      // Mark if this is opponent's pawn
+      event.object.userData.isOpponentPawn = !isCurrentPlayerPawn(pawnId);
+
+      // Store original position and opacity for all pawns
+      event.object.userData.originalPosition = event.object.position.clone();
+      event.object.userData.originalOpacity = event.object.material.opacity;
+      event.object.material.opacity = 0.8;
+    });
+
+    controlsRef.current.addEventListener('dragend', (event) => {
+      // Reset appearance
+      event.object.material.opacity = event.object.userData.originalOpacity ?? 1;
+
+      const pawnIndex = pawnRefs.current.findIndex(ref => ref === event.object);
+      if (pawnIndex === -1) return;
+
+      const pawnId = pawnIndex + 1;
+      
+      // Only process moves for current player's pawns
+      if (!isCurrentPlayerPawn(pawnId)) {
+        // Reset position if dragged
+        if (event.object.userData.originalPosition) {
+          event.object.position.copy(event.object.userData.originalPosition);
+        }
+        return;
+      }
+
+      // Process valid move
+      const newPosition = {
+        x: event.object.position.x,
+        y: event.object.position.y,
+        z: event.object.position.z
+      };
+
+      const playerColor = 
+        pawnId <= 4 ? 'green' :
+        pawnId <= 8 ? 'red' :
+        pawnId <= 12 ? 'blue' : 'yellow';
+      
+      const playerPawnIndex = (pawnId - 1) % 4;
+
+      if (onPawnMove) {
+        onPawnMove({
+          playerId: currentPlayerId,
+          color: playerColor,
+          pawnIndex: playerPawnIndex,
+          newPosition
+        });
+      }
+    });
+
+    return () => {
+      if (controlsRef.current) {
+        controlsRef.current.dispose();
+        controlsRef.current = null;
+      }
+    };
+  }
+}, [camera, gl, gameState?.currentTurn, currentPlayerId, gameState?.diceValue, onPawnMove, players]);
   return (
     <group {...props} dispose={null}>
       <mesh castShadow receiveShadow geometry={nodes.Object_6.geometry} material={materials['LUDO_BOARD_UPPER.001']} position={[-0.841, 0.215, -1.715]} scale={14.023} />
@@ -206,29 +236,35 @@ const LudoBoard = forwardRef((props, ref) => {
         <mesh castShadow receiveShadow geometry={nodes.Object_41.geometry} material={materials['Material.002']} />
       </group>
       <group ref={groupRef}>
-        {pawns.map((pawn, index) => {
-          const pawnColor = 
-            pawn.id <= 4 ? 'green' : 
-            pawn.id <= 8 ? 'red' : 
-            pawn.id <= 12 ? 'blue' : 'yellow';
-            
-          const isActive = activeColors.includes(pawnColor);
-          
-          return (
-            <mesh
-              key={pawn.id}
-              ref={el => pawnRefs.current[index] = el}
-              geometry={pawn.geo}
-              material={pawn.mat}
-              position={pawn.pos}
-              scale={pawn.scale}
-              castShadow
-              receiveShadow
-              visible={isActive}
-              userData={{ disabled: !isActive }}
-            />
-          );
-        })}
+{pawns.map((pawn, index) => {
+  const pawnColor = 
+    pawn.id <= 4 ? 'green' : 
+    pawn.id <= 8 ? 'red' : 
+    pawn.id <= 12 ? 'blue' : 'yellow';
+    
+  const isActive = activeColors.includes(pawnColor);
+  const isMovable = isActive && isCurrentPlayerPawn(pawn.id) && 
+                   gameState?.currentTurn === currentPlayerId && 
+                   gameState?.diceValue > 0;
+  
+  return (
+    <mesh
+      key={pawn.id}
+      ref={el => pawnRefs.current[index] = el}
+      geometry={pawn.geo}
+      material={pawn.mat}
+      position={pawn.pos}
+      scale={pawn.scale}
+      castShadow
+      receiveShadow
+      visible={isActive}
+      userData={{ 
+        disabled: !isMovable,
+        pawnId: pawn.id 
+      }}
+    />
+  );
+})}
       </group>
     </group>
   )
