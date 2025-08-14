@@ -350,12 +350,13 @@ const getNextPlayerId = (players, currentPlayerId) => {
     })
   }
 
-  const checkWinCondition = (players, playerId) => {
-    const player = players.find((p) => p.id === playerId)
-    if (!player) return false
+ const checkWinCondition = (players, playerId) => {
+  const player = players.find(p => p.id === playerId);
+  if (!player) return false;
 
-    return player.pawns.every((pawn) => pawn.position === 'finish')
-  }
+  // Check if all pawns are in finish position
+  return player.pawns.every(pawn => pawn.position === 'finish');
+};
 
 
 const handleDiceRoll = useCallback(async () => {
@@ -439,6 +440,33 @@ const checkValidMoves = (pawns, diceValue) => {
   })
 }
 
+const handleCaptures = (players, currentPlayerId, newPosition, currentColor) => {
+  // Don't capture on safe spots or home
+  if (newPosition === 'home') {
+    return players;
+  }
+
+  return players.map(player => {
+    // Skip current player and players of the same color (team)
+    if (player.id === currentPlayerId || player.color === currentColor) {
+      return player;
+    }
+
+    // Check each pawn for captures
+    const updatedPawns = player.pawns.map(pawn => {
+      if (pawn.position === newPosition) {
+        // Capture this pawn (send it home)
+        toast.success(`Captured ${player.name}'s pawn!`);
+        return { ...pawn, position: 'home' };
+      }
+      return pawn;
+    });
+
+    return { ...player, pawns: updatedPawns };
+  });
+};
+
+
 const passTurn = async () => {
   try {
     const gameRef = doc(db, 'games', gameId)
@@ -467,6 +495,7 @@ const makeMove = useCallback(async (moveData) => {
     return false;
   }
 
+  // Validate it's the player's turn
   if (gameState.currentTurn !== user.uid) {
     toast.error('Not your turn!');
     return false;
@@ -517,42 +546,80 @@ const makeMove = useCallback(async (moveData) => {
         ? [...currentPlayer.pawns] 
         : Array(4).fill({ position: 'home' });
 
+      // Get current pawn state
+      const currentPawn = playerPawns[pawnIndex];
+      if (!currentPawn) {
+        throw new Error('Selected pawn not found');
+      }
+
+      // Validate the move based on game rules
+      if (!isValidMove(
+        currentPawn.position, 
+        moveData.newPosition, 
+        currentGameState.diceValue,
+        color,
+        currentGameState.players
+      )) {
+        throw new Error('Invalid move according to game rules');
+      }
+
+      // Check for captures
+      const updatedPlayers = handleCaptures(
+        currentGameState.players,
+        user.uid,
+        moveData.newPosition,
+        color
+      );
+
       // Update the pawn position
-      playerPawns[pawnIndex] = {
-        ...playerPawns[pawnIndex],
+      const updatedPawns = [...playerPawns];
+      updatedPawns[pawnIndex] = {
+        ...currentPawn,
         position: moveData.newPosition
       };
 
-      // Update players array
-      const updatedPlayers = currentGameState.players.map(player => 
+      // Update current player's pawns in the players array
+      const finalPlayers = updatedPlayers.map(player => 
         player.id === user.uid 
-          ? { ...player, pawns: playerPawns } 
+          ? { ...player, pawns: updatedPawns } 
           : player
       );
 
       // Check win condition
-      const hasWon = checkWinCondition(updatedPlayers, user.uid);
+      const hasWon = checkWinCondition(finalPlayers, user.uid);
 
       // Prepare update data
       const updateData = {
-        players: updatedPlayers,
+        players: finalPlayers,
         lastMove: {
           playerId: user.uid,
           action: 'move',
           pawnId: moveData.pawnId,
+          fromPosition: currentPawn.position,
+          toPosition: moveData.newPosition,
           timestamp: serverTimestamp()
         },
-        diceValue: 0, 
-        ...(hasWon ? {
-          status: 'finished',
-          winner: user.uid,
-          finishedAt: serverTimestamp()
-        } : {})
+        diceValue: 0, // Reset dice after move
       };
 
-      // Set next turn (unless player won or rolled a 6)
-      if (!hasWon && currentGameState.diceValue !== 6) {
-        updateData.currentTurn = getNextPlayerId(updatedPlayers, user.uid);
+      // Determine if turn should pass
+      let shouldPassTurn = true;
+      
+      // Cases where turn doesn't pass:
+      // 1. Player won the game
+      // 2. Player rolled a 6 (gets another turn)
+      if (hasWon) {
+        updateData.status = 'finished';
+        updateData.winner = user.uid;
+        updateData.finishedAt = serverTimestamp();
+      } else if (currentGameState.diceValue === 6) {
+        shouldPassTurn = false;
+        toast.info("You rolled a 6! Roll again");
+      }
+
+      // If turn should pass, set next player
+      if (shouldPassTurn) {
+        updateData.currentTurn = getNextPlayerId(finalPlayers, user.uid);
       }
 
       transaction.update(gameRef, updateData);
@@ -562,10 +629,12 @@ const makeMove = useCallback(async (moveData) => {
         gameId,
         playerId: user.uid,
         pawnId: moveData.pawnId,
+        fromPosition: currentPawn.position,
         newPosition: moveData.newPosition,
         timestamp: Date.now(),
         isWin: hasWon,
-        nextTurn: updateData.currentTurn
+        nextTurn: updateData.currentTurn,
+        diceValue: 0 // Reset dice for all clients
       });
     });
 
@@ -606,6 +675,10 @@ import { OrbitControls, Environment } from '@react-three/drei'
 import { useEffect, useRef, useState } from 'react'
 import LudoBoard from './LudoBoard'
 import DiceAnimator from './DiceAnimator'
+import { useSocket } from '@/lib/socket'
+import { toast } from 'react-toastify'
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore'
+import { db } from '@/lib/firebase'
 
 export default function LudoCanvas({
   gameId,
@@ -613,625 +686,208 @@ export default function LudoCanvas({
   gameStatus,
   currentTurn,
   currentPlayerId,
-  onRollDice,
   gameState,
   onPawnMove,
-  isDiceRolling
 }) {
-  const ludoBoardRef = useRef();
-  const [triggerRoll, setTriggerRoll] = useState(false);
-  const [currentTurnName, setCurrentTurnName] = useState('Unknown Player'); // Add this line
+  const ludoBoardRef = useRef()
+  const socket = useSocket()
+  const [localDiceValue, setLocalDiceValue] = useState(0)
+  const [currentTurnName, setCurrentTurnName] = useState('')
+  const [isRolling, setIsRolling] = useState(false)
+  const [remoteRollingPlayer, setRemoteRollingPlayer] = useState(null)
 
+  // Sync game state
   useEffect(() => {
-    const player = players.find(p => p.id === currentTurn);
-    setCurrentTurnName(player?.name || 'Unknown Player');
-  }, [currentTurn, players]);
+    if (gameState?.diceValue !== undefined) {
+      setLocalDiceValue(gameState.diceValue)
+    }
+  }, [gameState?.diceValue])
 
-const handleRollComplete = (result) => {
-    setTriggerRoll(false)
-    onRollDice(result)
+  // Update current player name
+  useEffect(() => {
+    const player = players.find((p) => p.id === currentTurn)
+    setCurrentTurnName(player?.name || '')
+  }, [currentTurn, players])
+
+  // Socket listeners for real-time sync
+  useEffect(() => {
+    if (!socket) return
+
+    const handleRemoteRollStart = (data) => {
+      if (data.gameId === gameId && data.playerId !== currentPlayerId) {
+        setRemoteRollingPlayer(data.playerId)
+        setLocalDiceValue(0) // Reset for animation
+      }
+    }
+
+    const handleDiceResult = (data) => {
+      if (data.gameId === gameId) {
+        setLocalDiceValue(data.value)
+        setRemoteRollingPlayer(null)
+      }
+    }
+
+    socket.on('remote-roll-start', handleRemoteRollStart)
+    socket.on('dice-result', handleDiceResult)
+
+    return () => {
+      socket.off('remote-roll-start', handleRemoteRollStart)
+      socket.off('dice-result', handleDiceResult)
+    }
+  }, [socket, gameId, currentPlayerId])
+
+  const handleRollStart = () => {
+    setIsRolling(true)
+    setLocalDiceValue(0)
+    socket.emit('remote-roll-start', {
+      gameId,
+      playerId: currentPlayerId,
+      timestamp: Date.now()
+    })
   }
 
-  const handleRollClick = () => {
+  const handleRollComplete = async (result) => {
+    try {
+      // Update Firestore
+      const gameRef = doc(db, 'games', gameId)
+      await updateDoc(gameRef, {
+        diceValue: result,
+        lastAction: {
+          type: 'dice_roll',
+          value: result,
+          playerId: currentPlayerId,
+          timestamp: serverTimestamp()
+        }
+      })
+
+      // Notify all players
+      socket.emit('dice-result', {
+        gameId,
+        playerId: currentPlayerId,
+        value: result,
+        timestamp: Date.now()
+      })
+
+      setIsRolling(false)
+    } catch (error) {
+      console.error("Dice roll failed:", error)
+      toast.error("Dice roll failed")
+      setIsRolling(false)
+    }
+  }
+
+  const handleRollDice = () => {
     if (canRollDice()) {
-      setTriggerRoll(true)
+      handleRollStart()
     }
   }
 
   const canRollDice = () => {
-    return !isDiceRolling &&
-           currentPlayerId === currentTurn &&
-           gameStatus === 'playing'
+    return !isRolling && 
+           !remoteRollingPlayer &&
+           currentPlayerId === currentTurn && 
+           gameStatus === 'playing' &&
+           !gameState?.diceValue
+  }
+
+  const getRollingStatus = () => {
+    if (isRolling) return "You are rolling..."
+    if (remoteRollingPlayer) {
+      const player = players.find(p => p.id === remoteRollingPlayer)
+      return `${player?.name || 'Opponent'} is rolling...`
+    }
+    return null
   }
 
   const getButtonText = () => {
-    if (isDiceRolling) {
-      return currentPlayerId === currentTurn ? 'Rolling...' : `${currentTurnName} is rolling...`
-    }
+    if (isRolling) return 'Rolling...'
+    if (remoteRollingPlayer) return 'Wait for roll...'
     if (gameStatus !== 'playing') return 'Game Not Started'
-    if (currentPlayerId === currentTurn) return 'ROLL DICE 🎲'
-    return `Waiting for ${currentTurnName}`
+    if (currentPlayerId !== currentTurn) return `Waiting for ${currentTurnName}`
+    return gameState?.diceValue ? 'Make Your Move' : 'ROLL DICE 🎲'
+  }
+
+  const handlePawnMove = (moveData) => {
+    if (onPawnMove) {
+      onPawnMove({
+        gameId,
+        playerId: currentPlayerId,
+        pawnId: `${moveData.color}-${moveData.pawnIndex}`,
+        newPosition: moveData.newPosition,
+        timestamp: Date.now(),
+      })
+    }
   }
 
   return (
     <div className='relative w-full h-screen overflow-hidden flex items-center justify-center bg-gradient-to-br from-blue-900 to-purple-600'>
       <div className="absolute inset-0 bg-[url('/images/ludo-bg.jpg')] bg-cover bg-center opacity-10 blur-sm z-0 pointer-events-none" />
       
-      <Canvas
-        shadows
-        camera={{ position: [0, 10, 0], fov: 45 }}
-        gl={{ preserveDrawingBuffer: true }}
-      >
+      <Canvas shadows camera={{ position: [0, 25, 0], fov: 45 }} gl={{ preserveDrawingBuffer: true }}>
         <ambientLight intensity={0.6} />
         <directionalLight position={[-3, 10, 3]} intensity={1.2} castShadow />
-        <Environment preset="sunset" />
+        <Environment preset='sunset' />
 
-        <group scale={[0.65, 0.65, 0.65]}>
-<LudoBoard 
-  ref={ludoBoardRef} 
-  gameState={gameState} 
-  currentPlayerId={currentPlayerId} 
-  onPawnMove={onPawnMove} 
-  players={players} 
-/>        </group>
-
+        <group scale={[1.6, 1.6, 1.6]}>
+          <LudoBoard
+            position={[0, 0, 0]}
+            ref={ludoBoardRef}
+            gameState={gameState}
+            currentPlayerId={currentPlayerId}
+            onPawnMove={handlePawnMove}
+            players={players}
+          />
+        </group>
+        
         {ludoBoardRef.current?.diceRef && (
           <DiceAnimator
             diceRef={ludoBoardRef.current.diceRef}
-            trigger={isDiceRolling || triggerRoll}
+            trigger={isRolling || !!remoteRollingPlayer}
             onFinish={handleRollComplete}
+            currentValue={localDiceValue}
+            isRemoteRoll={!!remoteRollingPlayer && !isRolling}
           />
         )}
 
-        <OrbitControls
-          enableRotate={false}
-          enableZoom={false}
-          enablePan={false}
-          target={[0, 0, 0]}
-        />
+        <OrbitControls enableRotate={false} enableZoom={false} enablePan={false} target={[0, 0, 0]} />
       </Canvas>
 
-      <div className="absolute bottom-8 left-0 right-0 flex justify-center">
+      {/* Game UI */}
+      <div className='absolute bottom-8 left-0 right-0 flex flex-col items-center gap-2'>
+        {getRollingStatus() && (
+          <div className="text-white text-lg font-semibold bg-black bg-opacity-70 px-4 py-2 rounded-full animate-pulse">
+            {getRollingStatus()}
+          </div>
+        )}
         <button
-          onClick={handleRollClick}
-          disabled={!canRollDice()}
+          onClick={handleRollDice}
           className={`px-8 py-3 rounded-full font-bold text-lg shadow-lg transition-all
-            ${canRollDice()
-              ? 'bg-yellow-400 hover:bg-yellow-500 text-black'
-              : 'bg-gray-500 text-gray-200 cursor-not-allowed'
+            ${
+              canRollDice()
+                ? 'bg-yellow-400 hover:bg-yellow-500 text-black'
+                : 'bg-gray-500 text-gray-200 cursor-not-allowed'
             }
-            ${isDiceRolling ? 'opacity-70 scale-95' : 'hover:scale-105'}`}
+            ${(isRolling || remoteRollingPlayer) ? 'opacity-70 scale-95' : 'hover:scale-105'}`}
+          disabled={!canRollDice()}
         >
           {getButtonText()}
         </button>
       </div>
 
-      {gameState?.diceValue > 0 && !isDiceRolling && (
-        <div className="absolute top-4 right-4 bg-black bg-opacity-70 text-white p-3 rounded-lg z-10">
-          Dice: {gameState.diceValue}
+      {/* Dice value display */}
+      {(gameState?.diceValue || localDiceValue > 0) && (
+        <div className='absolute top-4 right-4 bg-black bg-opacity-70 text-white p-3 rounded-lg z-10'>
+          Dice: {gameState?.diceValue || localDiceValue}
         </div>
       )}
-     <div className="absolute top-4 left-4 bg-black bg-opacity-70 text-white p-3 rounded-lg z-20">
+
+      {/* Turn indicator */}
+      <div className="absolute top-4 left-4 bg-black bg-opacity-70 text-white p-3 rounded-lg z-20">
         {currentPlayerId === currentTurn ? 
           "Your turn!" : 
           `${currentTurnName}'s turn`
         }
       </div>
     </div>
-  )
-}
-
-import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
-import { useGLTF } from '@react-three/drei';
-import { useThree, extend } from '@react-three/fiber';
-import * as THREE from 'three';
-import { DragControls } from 'three/examples/jsm/controls/DragControls';
-
-extend({ DragControls });
-
-const LudoBoard = forwardRef((props, ref) => {
-  const { nodes, materials } = useGLTF('/ludo_board_games.glb');
-  const { gameState, currentPlayerId, onPawnMove, players } = props;
-  const { camera, gl } = useThree();
-  const groupRef = useRef();
-  const diceRef = useRef();
-  const controlsRef = useRef();
-
-  useImperativeHandle(ref, () => ({
-    diceRef: diceRef.current
-  }));
-
-
-  const initialPawns = [
-    // Green pawns
-    { id: 1, geo: nodes.Object_4.geometry, mat: materials.LUDO_COIN_M, pos: [2.232, 0.253, 0.711], scale: 12.073 },
-    { id: 2, geo: nodes.Object_28.geometry, mat: materials.LUDO_COIN_M, pos: [1.635, 0.253, -0.001], scale: 12.073 },
-    { id: 3, geo: nodes.Object_30.geometry, mat: materials.LUDO_COIN_M, pos: [0.918, 0.253, 0.688], scale: 12.073 },
-    { id: 4, geo: nodes.Object_32.geometry, mat: materials.LUDO_COIN_M, pos: [1.612, 0.253, 1.37], scale: 12.073 },
-
-    // Red pawns
-    {
-      id: 5,
-      geo: nodes.Object_10.geometry,
-      mat: materials['LUDO_COIN_M.003'],
-      pos: [-2.592, 0.253, 0.711],
-      scale: 12.073,
-    },
-    {
-      id: 6,
-      geo: nodes.Object_34.geometry,
-      mat: materials['LUDO_COIN_M.003'],
-      pos: [-3.2, 0.253, 0.016],
-      scale: 12.073,
-    },
-    {
-      id: 7,
-      geo: nodes.Object_36.geometry,
-      mat: materials['LUDO_COIN_M.003'],
-      pos: [-3.888, 0.253, 0.711],
-      scale: 12.073,
-    },
-    {
-      id: 8,
-      geo: nodes.Object_38.geometry,
-      mat: materials['LUDO_COIN_M.003'],
-      pos: [-3.223, 0.253, 1.37],
-      scale: 12.073,
-    },
-
-    // Blue pawns
-    {
-      id: 9,
-      geo: nodes.Object_12.geometry,
-      mat: materials['LUDO_COIN_M.002'],
-      pos: [-2.592, 0.253, -4.089],
-      scale: 12.073,
-    },
-    {
-      id: 10,
-      geo: nodes.Object_22.geometry,
-      mat: materials['LUDO_COIN_M.002'],
-      pos: [-3.212, 0.253, -4.777],
-      scale: 12.073,
-    },
-    {
-      id: 11,
-      geo: nodes.Object_24.geometry,
-      mat: materials['LUDO_COIN_M.002'],
-      pos: [-3.906, 0.253, -4.089],
-      scale: 12.073,
-    },
-    {
-      id: 12,
-      geo: nodes.Object_26.geometry,
-      mat: materials['LUDO_COIN_M.002'],
-      pos: [-3.229, 0.253, -3.44],
-      scale: 12.073,
-    },
-
-    // Yellow pawns
-    {
-      id: 13,
-      geo: nodes.Object_14.geometry,
-      mat: materials['LUDO_COIN_M.001'],
-      pos: [0.918, 0.253, -4.106],
-      scale: 12.073,
-    },
-    {
-      id: 14,
-      geo: nodes.Object_16.geometry,
-      mat: materials['LUDO_COIN_M.001'],
-      pos: [2.22, 0.253, -4.083],
-      scale: 12.073,
-    },
-    {
-      id: 15,
-      geo: nodes.Object_18.geometry,
-      mat: materials['LUDO_COIN_M.001'],
-      pos: [1.607, 0.253, -4.777],
-      scale: 12.073,
-    },
-    {
-      id: 16,
-      geo: nodes.Object_20.geometry,
-      mat: materials['LUDO_COIN_M.001'],
-      pos: [1.607, 0.253, -3.446],
-      scale: 12.073,
-    },
-  ];
-
-  const [pawns, setPawns] = useState(initialPawns);
-  const activeColors = players?.map((player) => player.color) || [];
-  const pawnRefs = useRef([]);
-
-  // Expose the diceRef to parent component
-  useEffect(() => {
-    if (ref) {
-      ref.current = {
-        diceRef: diceRef.current
-      };
-    }
-  }, [ref]);
-
-  // Helper function to check if a pawn belongs to the current player
-  const isCurrentPlayerPawn = (pawnId) => {
-    if (!currentPlayerId) return false;
-
-    const currentPlayer = players?.find((p) => p.id === currentPlayerId);
-    if (!currentPlayer) return false;
-
-    const colorMap = {
-      green: { start: 1, end: 4 },
-      red: { start: 5, end: 8 },
-      blue: { start: 9, end: 12 },
-      yellow: { start: 13, end: 16 },
-    };
-
-    const pawnColor = Object.entries(colorMap).find(
-      ([_, range]) => pawnId >= range.start && pawnId <= range.end
-    )?.[0];
-
-    return pawnColor === currentPlayer.color;
-  };
-
-  useEffect(() => {
-    if (gameState?.players) {
-      const updatedPawns = [...initialPawns];
-
-      gameState.players.forEach((player) => {
-        player.pawns?.forEach((pawn, index) => {
-          const pawnId = getPawnId(player.color, index);
-          const pawnIndex = pawnId - 1;
-
-          if (pawnIndex >= 0 && pawnIndex < updatedPawns.length) {
-            if (pawn.position === 'home') {
-              updatedPawns[pawnIndex].pos = [...initialPawns[pawnIndex].pos];
-            } else if (pawn.position === 'finish') {
-              updatedPawns[pawnIndex].pos = getFinishPosition(player.color, index);
-            } else if (typeof pawn.position === 'object') {
-              updatedPawns[pawnIndex].pos = [pawn.position.x, pawn.position.y, pawn.position.z];
-            }
-          }
-        });
-      });
-
-      setPawns(updatedPawns);
-    }
-  }, [gameState]);
-
-  const getPawnId = (color, index) => {
-    const colorMap = {
-      green: { start: 1, count: 4 },
-      red: { start: 5, count: 4 },
-      blue: { start: 9, count: 4 },
-      yellow: { start: 13, count: 4 },
-    };
-    return colorMap[color]?.start + index;
-  };
-
-  const getFinishPosition = (color, pawnIndex) => {
-    const finishPositions = {
-      green: [
-        [3.5, 0.253, 1.5],
-        [3.5, 0.253, 0.5],
-        [2.5, 0.253, 1.5],
-        [2.5, 0.253, 0.5],
-      ],
-      red: [
-        [-3.5, 0.253, 1.5],
-        [-3.5, 0.253, 0.5],
-        [-4.5, 0.253, 1.5],
-        [-4.5, 0.253, 0.5],
-      ],
-      blue: [
-        [-3.5, 0.253, -3.5],
-        [-3.5, 0.253, -4.5],
-        [-4.5, 0.253, -3.5],
-        [-4.5, 0.253, -4.5],
-      ],
-      yellow: [
-        [3.5, 0.253, -3.5],
-        [3.5, 0.253, -4.5],
-        [2.5, 0.253, -3.5],
-        [2.5, 0.253, -4.5],
-      ],
-    };
-    return finishPositions[color]?.[pawnIndex] || [0, 0, 0];
-  };
-
-  useEffect(() => {
-    if (pawnRefs.current.length > 0) {
-      controlsRef.current = new DragControls(pawnRefs.current, camera, gl.domElement);
-
-      controlsRef.current.addEventListener('dragstart', (event) => {
-        const pawnIndex = pawnRefs.current.findIndex((ref) => ref === event.object);
-        if (pawnIndex === -1 || !isCurrentPlayerPawn(pawnIndex + 1)) {
-          controlsRef.current.cancel();
-          return;
-        }
-        event.object.material.opacity = 0.8;
-      });
-
-      controlsRef.current.addEventListener('dragend', (event) => {
-        event.object.material.opacity = 1;
-
-        const pawnIndex = pawnRefs.current.findIndex((ref) => ref === event.object);
-        if (pawnIndex === -1) return;
-
-        const newPosition = {
-          x: event.object.position.x,
-          y: event.object.position.y,
-          z: event.object.position.z,
-        };
-
-        const pawnId = pawnIndex + 1;
-        let playerColor = '';
-        if (pawnId >= 1 && pawnId <= 4) playerColor = 'green';
-        else if (pawnId >= 5 && pawnId <= 8) playerColor = 'red';
-        else if (pawnId >= 9 && pawnId <= 12) playerColor = 'blue';
-        else if (pawnId >= 13 && pawnId <= 16) playerColor = 'yellow';
-
-        const playerPawnIndex = (pawnId - 1) % 4;
-
-        if (onPawnMove && playerColor && currentPlayerId) {
-          onPawnMove({
-            playerId: currentPlayerId,
-            color: playerColor,
-            pawnIndex: playerPawnIndex,
-            newPosition,
-          });
-        }
-      });
-
-      controlsRef.current.enabled = gameState?.currentTurn === currentPlayerId && gameState?.diceValue > 0;
-
-      return () => {
-        controlsRef.current?.dispose();
-      };
-    }
-  }, [camera, gl, gameState?.currentTurn, currentPlayerId, gameState?.diceValue, onPawnMove]);
-
-  return (
-    <group {...props} dispose={null}>
-      {/* Board */}
-      <mesh
-        castShadow
-        receiveShadow
-        geometry={nodes.Object_6.geometry}
-        material={materials['LUDO_BOARD_UPPER.001']}
-        position={[-0.841, 0.215, -1.715]}
-        scale={14.023}
-      />
-      <mesh
-        castShadow
-        receiveShadow
-        geometry={nodes.Object_8.geometry}
-        material={materials.LUDO_BOARD_UPPER}
-        position={[-0.841, 0.215, -1.715]}
-        scale={14.023}
-      />
-
-      {/* Dice */}
-      <group ref={diceRef} position={[5.178, 0.253, -1.668]} rotation={[Math.PI / 2, 0, 0]} scale={15}>
-        <mesh castShadow receiveShadow geometry={nodes.Object_40.geometry} material={materials.DICE_M} />
-        <mesh castShadow receiveShadow geometry={nodes.Object_41.geometry} material={materials['Material.002']} />
-      </group>
-
-      {/* Pawns */}
-      <group ref={groupRef}>
-       {pawns.map((pawn, index) => {
-          const pawnColor = pawn.id <= 4 ? 'green' : pawn.id <= 8 ? 'red' : pawn.id <= 12 ? 'blue' : 'yellow';
-          const isActive = activeColors.includes(pawnColor);
-
-          return (
-            <mesh
-              key={pawn.id}
-              ref={(el) => (pawnRefs.current[index] = el)}
-              geometry={pawn.geo}
-              material={pawn.mat}
-              position={pawn.pos}
-              scale={pawn.scale}
-              castShadow
-              receiveShadow
-              visible={isActive}
-              userData={{ disabled: !isActive }}
-            />
-          );
-        })}      </group>
-    </group>
-  );
-});
-
-useGLTF.preload('/ludo_board_games.glb');
-
-export default LudoBoard;
-
-'use client'
-import { useFrame } from '@react-three/fiber'
-import { useRef, useEffect } from 'react'
-import * as THREE from 'three'
-
-export default function DiceAnimator({ diceRef, trigger, onFinish }) {
-  const animationRef = useRef({
-    started: false,
-    duration: 1.2, 
-    elapsed: 0
-  })
-
-  const originalRotation = useRef(new THREE.Euler())
-
-  useEffect(() => {
-    if (!diceRef) return
-
-    if (trigger) {
-      console.log('Starting dice animation')
-      animationRef.current.started = true
-      animationRef.current.elapsed = 0
-      originalRotation.current.copy(diceRef.rotation)
-    } else {
-      animationRef.current.started = false
-    }
-  }, [trigger, diceRef])
-
-  useFrame((_, delta) => {
-    if (!trigger || !diceRef || !animationRef.current.started) return
-
-    animationRef.current.elapsed += delta
-    const progress = Math.min(animationRef.current.elapsed / animationRef.current.duration, 1)
-
-    if (progress < 1) {
-      // Animate spinning
-      diceRef.rotation.x += delta * 10
-      diceRef.rotation.y += delta * 12
-      diceRef.rotation.z += delta * 8
-    } else {
-      // Animation complete
-      const result = Math.floor(Math.random() * 6) + 1
-      setDiceRotation(diceRef, result)
-      animationRef.current.started = false
-      onFinish?.(result)
-    }
-  })
-
-  return null
-}
-
-function setDiceRotation(dice, result) {
-  const rotations = {
-    1: [0, Math.PI/2, 0],    
-    2: [0, 0, -Math.PI/2],  
-    3: [0, Math.PI, 0],     
-    4: [0, 0, 0],           
-    5: [0, 0, Math.PI/2],   
-    6: [0, -Math.PI/2, 0]  
-  }
-  dice.rotation.set(...(rotations[result] || rotations[1]))
-}
-
-import React, { useRef } from 'react'
-import { useGLTF } from '@react-three/drei'
-
-export default function Dice(props) {
-  const { nodes, materials } = useGLTF('/dice.glb')
-  return (
-    <group {...props} dispose={null}>
-      <group rotation={[-Math.PI / 2, 0, 0]} scale={0.053}>
-        <group rotation={[Math.PI / 2, 0, 0]}>
-          <mesh
-            castShadow
-            receiveShadow
-            geometry={nodes.defaultMaterial.geometry}
-            material={materials.defaultMat}
-          />
-          <mesh
-            castShadow
-            receiveShadow
-            geometry={nodes.defaultMaterial_1.geometry}
-            material={materials.defaultMat}
-          />
-        </group>
-      </group>
-    </group>
-  )
-}
-
-useGLTF.preload('/dice.glb')
-
-
-'use client'
-
-import { useParams } from 'next/navigation'
-import useLudoGameManager from '@/components/LudoGameManager'
-import LudoCanvas from '@/components/ludo/LudoCanvas'
-import GameStatusBanner from '@/components/GameStatusBanner'
-import GameControls from '@/components/GameControls'
-import PlayerList from '@/components/PlayerList'
-
-export default function LudoGamePage() {
-  const { gameId } = useParams()
-  const {
-    gameState,
-    players = [],
-    gameStatus,
-    currentTurn,
-    joinGame,
-    startGame,
-    leaveGame,
-    makeMove,
-    currentPlayerId,
-    isGameCreator,
-    currentPlayer,
-    isLoading,
-    error,
-    handleDiceRoll,
-  } = useLudoGameManager(gameId)
-
-  if (isLoading) {
-    return (
-      <div className='flex items-center justify-center h-screen'>
-        <div className='text-red-500 text-xl'>Loading...</div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className='flex items-center justify-center h-screen'>
-        <div className='text-red-500 text-xl'>{error}</div>
-      </div>
-    )
-  }
-
-  return (
-    <main className='bg-green-50 min-h-screen'>
-      <div className='container mx-auto px-4 py-4 grid grid-cols-1 lg:grid-cols-12 gap-6'>
-        <div className='lg:col-span-9 flex flex-col items-center'>
-          <div className='w-full max-w-4xl'>
-            <GameStatusBanner
-              status={gameStatus}
-              playerCount={players.length}
-              currentTurn={currentTurn}
-              players={players}
-              currentPlayerId={currentPlayerId}
-            />
-
-            <LudoCanvas
-              gameId={gameId}
-              players={players}
-              gameStatus={gameStatus}
-              currentTurn={currentTurn}
-              currentPlayerId={currentPlayerId}
-              onRollDice={handleDiceRoll}
-              gameState={gameState}
-              onPawnMove={makeMove}
-            />
-
-            <GameControls
-              gameStatus={gameStatus}
-              players={players}
-              currentPlayerId={currentPlayerId}
-              isGameCreator={isGameCreator}
-              currentPlayer={currentPlayer}
-              onJoin={joinGame}
-              onStart={startGame}
-              onLeave={leaveGame}
-            />
-          </div>
-        </div>
-
-        <div className='lg:col-span-3 space-y-6'>
-          <PlayerList players={players} currentPlayerId={currentPlayerId} />
-
-          <section>
-            <h3 className='text-md font-semibold text-gray-700 mb-2'>Game Info</h3>
-            <div className='bg-white p-4 rounded-lg shadow'>
-              <p>Status: {gameStatus}</p>
-              <p>Players: {players.length}/4</p>
-              {gameStatus === 'playing' && <p>Current Turn: {players.find((p) => p.id === currentTurn)?.name}</p>}
-            </div>
-          </section>
-        </div>
-      </div>
-    </main>
   )
 }

@@ -555,28 +555,6 @@ const makeMove = useCallback(async (moveData) => {
   }
 }, [user, gameState, socket, gameId]);
 
-const isValidMove = (player, pawnIndex, newPosition, diceValue) => {
-  // Ensure pawns exists and is an array
-  const pawns = Array.isArray(player.pawns) ? player.pawns : [];
-  const pawn = pawns[pawnIndex];
-  
-  if (!pawn) return false;
-
-  // Check if pawn is in home and needs a 6 to move out
-  if (pawn.position === 'home' && diceValue !== 6) {
-    return false;
-  }
-
-  // Check if pawn is already finished
-  if (pawn.position === 'finish') {
-    return false;
-  }
-
-  // Add additional game-specific validation here
-  return true;
-};
-
-
   return {
     gameState,
     players,
