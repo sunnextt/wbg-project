@@ -150,7 +150,7 @@ export default function LudoCanvas({
   }
 
   const getRollingStatus = () => {
-    if (isRolling) return 'You are rolling...'
+    if (isRolling) return currentPlayerId !== currentTurn? `${currentTurnName} is rolling...` : 'You are rolling...'
     if (currentPlayerId !== currentTurn) return `${currentTurnName} is making move`
     return null
   }
@@ -212,7 +212,7 @@ export default function LudoCanvas({
 
       {/* Game UI Controls */}
       <div className='absolute bottom-8 left-0 right-0 flex flex-col items-center gap-2'>
-        {getRollingStatus() && (
+        {gameStatus == 'playing' && getRollingStatus() && (
           <div className='text-white text-lg font-semibold bg-black bg-opacity-70 px-4 py-2 rounded-full'>
             {getRollingStatus()}
           </div>
@@ -240,9 +240,11 @@ export default function LudoCanvas({
       )}
 
       {/* Turn indicator */}
-      <div className='absolute top-4 left-4 bg-black bg-opacity-70 text-white p-3 rounded-lg z-20'>
-        {currentPlayerId === currentTurn ? 'Your turn!' : `${currentTurnName}'s turn`}
-      </div>
+{gameStatus == 'playing' && 
+  <div className='absolute top-4 left-4 bg-black bg-opacity-70 text-white p-3 rounded-lg z-20'>
+    {currentPlayerId === currentTurn ? 'Your turn!' : `${currentTurnName}'s turn`}
+  </div>
+}
     </div>
   )
 }

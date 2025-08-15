@@ -9,7 +9,7 @@ extend({ DragControls })
 const LudoBoard = forwardRef((props, ref) => {
   const { nodes, materials } = useGLTF('/ludo_board_games.glb')
   const { gameState, currentPlayerId, onPawnMove, players } = props
-  const { camera, gl, scene } = useThree()
+  const { camera, gl } = useThree()
   const groupRef = useRef()
   const diceRef = useRef();
   const controlsRef = useRef();
