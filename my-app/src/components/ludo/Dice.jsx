@@ -380,3 +380,199 @@ const checkWinCondition = (players, playerId) => {
   // Check if all pawns are in finish position
   return player.pawns.every(pawn => pawn.position === 'finish');
 };
+
+
+const makeMove3 = useCallback(async (moveData) => {
+  if (!user || !gameState || !socket) {
+    toast.error('Connection error. Please try again.');
+    return false;
+  }
+
+  // Validate it's the player's turn
+  if (gameState.currentTurn !== user.uid) {
+    toast.error('Not your turn!');
+    return false;
+  }
+
+  // Validate move data
+  if (!moveData || !moveData.pawnId || !moveData.newPosition) {
+    toast.error('Invalid move data');
+    return false;
+  }
+
+  try {
+    const gameRef = doc(db, 'games', gameId);
+    
+    await runTransaction(db, async (transaction) => {
+      const gameDoc = await transaction.get(gameRef);
+      if (!gameDoc.exists()) {
+        throw new Error('Game not found');
+      }
+
+      const currentGameState = gameDoc.data();
+      
+      // Additional validation
+      if (currentGameState.status !== 'playing') {
+        throw new Error('Game is not in progress');
+      }
+
+      if (currentGameState.currentTurn !== user.uid) {
+        throw new Error('Turn changed before move completed');
+      }
+
+      // Parse pawn information
+      const [color, pawnIndexStr] = moveData.pawnId.split('-');
+      const pawnIndex = parseInt(pawnIndexStr);
+      
+      if (isNaN(pawnIndex) || pawnIndex < 0 || pawnIndex > 3) {
+        throw new Error('Invalid pawn selection');
+      }
+
+      // Find the current player
+      const currentPlayer = currentGameState.players.find(p => p.id === user.uid);
+      if (!currentPlayer) {
+        throw new Error('Player not found in game');
+      }
+
+      // Get current pawn state
+      const playerPawns = Array.isArray(currentPlayer.pawns) 
+        ? [...currentPlayer.pawns] 
+        : Array(4).fill({ position: 'home' });
+      
+      const currentPawn = playerPawns[pawnIndex];
+
+      // Check if player has any pawns outside home
+      const hasPawnsOutside = playerPawns.some(p => 
+        p.position !== 'home' && p.position !== 'finish'
+      );
+
+      // STRICT VALIDATION FOR MOVING OUT OF HOME
+      if (currentPawn.position === 'home') {
+        // Must roll 6 to bring pawn out
+        if (currentGameState.diceValue !== 6) {
+          throw new Error('You must roll a 6 to bring a pawn out of home');
+        }
+        // Must move to start position
+        if (moveData.newPosition !== 'start') {
+          throw new Error('Pawns must move to start position when coming out of home');
+        }
+      } 
+      // Validation for normal moves
+      else if (currentPawn.position !== 'home' && currentPawn.position !== 'finish') {
+        // Validate dice value for normal moves (example: must move exact steps)
+        const currentPosition = parseInt(currentPawn.position);
+        const newPosition = parseInt(moveData.newPosition);
+        
+        if (isNaN(currentPosition) {
+          throw new Error('Invalid current pawn position');
+        }
+        
+        if (isNaN(newPosition)) {
+          throw new Error('Invalid target position');
+        }
+
+        // Calculate expected move distance
+        const moveDistance = (newPosition - currentPosition + 52) % 52; // Handle board loop
+        if (moveDistance !== currentGameState.diceValue) {
+          throw new Error(`You must move exactly ${currentGameState.diceValue} spaces`);
+        }
+      }
+      // Cannot move finished pawns
+      else if (currentPawn.position === 'finish') {
+        throw new Error('Cannot move a pawn that has finished');
+      }
+
+      // Check for captures (if landing on opponent's pawn)
+      const updatedPlayers = currentGameState.players.map(player => {
+        if (player.id === user.uid) return player; // Skip current player
+        
+        return {
+          ...player,
+          pawns: player.pawns.map(pawn => {
+            // If opponent's pawn is at the target position (and not in safe zone)
+            if (pawn.position === moveData.newPosition.toString() && 
+                !isSafeZone(pawn.position, player.color)) {
+              return { ...pawn, position: 'home' }; // Send opponent's pawn home
+            }
+            return pawn;
+          })
+        };
+      });
+
+      // Update the pawn position
+      playerPawns[pawnIndex] = {
+        ...currentPawn,
+        position: moveData.newPosition
+      };
+
+      // Update current player's pawns in the players array
+      const finalPlayers = updatedPlayers.map(player => 
+        player.id === user.uid 
+          ? { ...player, pawns: playerPawns } 
+          : player
+      );
+
+      // Check win condition (all pawns in finish)
+      const hasWon = playerPawns.every(pawn => pawn.position === 'finish');
+
+      // Prepare update data
+      const updateData = {
+        players: finalPlayers,
+        lastMove: {
+          playerId: user.uid,
+          action: 'move',
+          pawnId: moveData.pawnId,
+          fromPosition: currentPawn.position,
+          toPosition: moveData.newPosition,
+          timestamp: serverTimestamp()
+        },
+        diceValue: 0, // Reset dice after move
+        ...(hasWon ? {
+          status: 'finished',
+          winner: user.uid,
+          finishedAt: serverTimestamp()
+        } : {})
+      };
+
+      // Set next turn (unless player won)
+      if (!hasWon) {
+        // Player gets another turn only if they rolled a 6
+        if (currentGameState.diceValue !== 6) {
+          updateData.currentTurn = getNextPlayerId(finalPlayers, user.uid);
+        }
+      }
+
+      transaction.update(gameRef, updateData);
+
+      // Emit move via socket
+      socket.emit('pawn-move', {
+        gameId,
+        playerId: user.uid,
+        pawnId: moveData.pawnId,
+        fromPosition: currentPawn.position,
+        newPosition: moveData.newPosition,
+        timestamp: Date.now(),
+        isWin: hasWon,
+        nextTurn: updateData.currentTurn,
+        capturedPawns: updateData.lastMove.capturedPawns || []
+      });
+    });
+
+    return true;
+  } catch (error) {
+    console.error('Move failed:', error);
+    toast.error(error.message || 'Move failed');
+    return false;
+  }
+}, [user, gameState, socket, gameId]);
+
+// Helper function to check safe zones
+const isSafeZone = (position, color) => {
+  const safeZones = {
+    green: [1, 2, 3, 4, 5],
+    yellow: [14, 15, 16, 17, 18],
+    blue: [27, 28, 29, 30, 31],
+    red: [40, 41, 42, 43, 44]
+  };
+  return safeZones[color]?.includes(parseInt(position)) || false;
+};
