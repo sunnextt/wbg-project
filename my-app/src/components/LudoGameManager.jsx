@@ -47,7 +47,7 @@ export default function useLudoGameManager(gameId) {
         setError(null)
       },
       (err) => {
-        console.error('Game snapshot error:', err)
+        // console.error('Game snapshot error:', err)
         setError('Failed to load game')
         setGameStatus('error')
       }
@@ -102,6 +102,8 @@ export default function useLudoGameManager(gameId) {
       const playerName = players.find(p => p.id === playerId)?.name || 'A player'
       toast.warning(`${playerName} disconnected`)
     }
+
+    
 
     socket.on('pawn-move', handlePawnMove)
     socket.on('dice-rolled', handleDiceRolled)
@@ -176,7 +178,7 @@ export default function useLudoGameManager(gameId) {
     toast.success('Joined game successfully!')
     return true
   } catch (error) {
-    console.error('Error joining game:', error)
+    // console.error('Error joining game:', error)
 
     if (error.message.includes('already started')) {
       toast.error('Cannot join - game already started')

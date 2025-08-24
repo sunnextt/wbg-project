@@ -16,7 +16,7 @@ export default function DiceAnimator({
     elapsed: 0
   })
 
-  console.log(rollingPlayerId);
+  // console.log(rollingPlayerId);
   
 
   useEffect(() => {
@@ -53,7 +53,7 @@ export default function DiceAnimator({
     animationRef.current.elapsed += delta
     const progress = Math.min(animationRef.current.elapsed / animationRef.current.duration, 1.5)
 
-     console.log("isRolling Now", trigger);
+    //  console.log("isRolling Now", trigger);
 
 
     if (progress < 1) {
@@ -70,7 +70,7 @@ export default function DiceAnimator({
       animationRef.current.started = false
       
       // Only the rolling player reports completion
-      console.log("progress niwww",result, rollingPlayerId, currentPlayerId);
+      // console.log("progress niwww",result, rollingPlayerId, currentPlayerId);
 
       if (rollingPlayerId === currentPlayerId) {
         onFinish(result)

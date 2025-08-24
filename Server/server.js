@@ -5,7 +5,8 @@ const http = require('http');
 const socketIO = require('socket.io');
 const connectDB = require('./config/db');
 const User = require('./models/User');
-const admin = require('./services/firebaseAdmin')
+const admin = require('./services/firebaseAdmin');
+const { log } = require('console');
 
 
 const app = express();
@@ -103,6 +104,9 @@ io.on('connection', (socket) => {
           timestamp: Date.now()
         });
 
+        console.log("newPosition");
+
+
         // Optional: Update Firebase here if you want server to be authoritative
       } catch (error) {
         console.error('Move validation failed:', error);
@@ -113,7 +117,24 @@ io.on('connection', (socket) => {
       }
     });
 
+    socket.on('pawn-dragging', (data) => {
+      const { gameId, pawnId, newPosition } = data;
+
+      console.log("gameId one", gameId);
+
+      
+      // Broadcast to everyone in the same game room except sender
+      socket.to(gameId).emit('pawn-dragging', {
+        gameId,
+        playerId: uid,
+        pawnId,
+        newPosition,
+        timestamp: Date.now()
+      });
+    });
+
     socket.on('dice-roll', async (data) => {
+
       try {
         const { gameId, value } = data;
         

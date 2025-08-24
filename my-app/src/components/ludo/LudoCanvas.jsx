@@ -175,7 +175,7 @@ export default function LudoCanvas({
     }
   }
 
-  console.log(isRolling)
+  // console.log(isRolling)
 
   return (
     <div className='relative w-full h-screen overflow-hidden flex items-center justify-center bg-gradient-to-br from-blue-900 to-purple-600'>
@@ -188,12 +188,13 @@ export default function LudoCanvas({
 
         <group scale={[1.6, 1.6, 1.6]}>
           <LudoBoard
-            position={[0, 0, 0]}
             ref={ludoBoardRef}
             gameState={gameState}
             currentPlayerId={currentPlayerId}
             onPawnMove={handlePawnMove}
             players={players}
+            socket={socket}
+            gameId={gameId}
           />
         </group>
         {ludoBoardRef.current?.diceRef && (
