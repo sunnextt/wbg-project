@@ -22,7 +22,7 @@ const LudoBoard = forwardRef((props, ref) => {
   // Initial pawn positions
   const initialPawns = [
     // Green pawns
-    { id: 1, geo: nodes.Object_4.geometry, mat: materials.LUDO_COIN_M, pos: [1.5, 0.253, 5.5], scale: 12.073 },
+    { id: 1, geo: nodes.Object_4.geometry, mat: materials.LUDO_COIN_M, pos: [2.232, 0.253, 0.711], scale: 12.073 },
     { id: 2, geo: nodes.Object_28.geometry, mat: materials.LUDO_COIN_M, pos: [1.635, 0.253, -0.001], scale: 12.073 },
     { id: 3, geo: nodes.Object_30.geometry, mat: materials.LUDO_COIN_M, pos: [0.918, 0.253, 0.688], scale: 12.073 },
     { id: 4, geo: nodes.Object_32.geometry, mat: materials.LUDO_COIN_M, pos: [1.612, 0.253, 1.37], scale: 12.073 },
@@ -77,8 +77,6 @@ const LudoBoard = forwardRef((props, ref) => {
           if (pawnIndex >= 0 && pawnIndex < updatedPawns.length) {
             if (pawn.position === 'home') {
               updatedPawns[pawnIndex].pos = [...initialPawns[pawnIndex].pos]
-            } else if (pawn.position === 'finish') {
-              updatedPawns[pawnIndex].pos = getFinishPosition(player.color, index)
             } else if (typeof pawn.position === 'object') {
               updatedPawns[pawnIndex].pos = [pawn.position.x, pawn.position.y, pawn.position.z]
             }
@@ -99,15 +97,6 @@ const LudoBoard = forwardRef((props, ref) => {
     return colorMap[color]?.start + index
   }
 
-  const getFinishPosition = (color, pawnIndex) => {
-    const finishPositions = {
-      green: [[3.5, 0.253, 1.5], [3.5, 0.253, 0.5], [2.5, 0.253, 1.5], [2.5, 0.253, 0.5]],
-      red: [[-3.5, 0.253, 1.5], [-3.5, 0.253, 0.5], [-4.5, 0.253, 1.5], [-4.5, 0.253, 0.5]],
-      blue: [[-3.5, 0.253, -3.5], [-3.5, 0.253, -4.5], [-4.5, 0.253, -3.5], [-4.5, 0.253, -4.5]],
-      yellow: [[3.5, 0.253, -3.5], [3.5, 0.253, -4.5], [2.5, 0.253, -3.5], [2.5, 0.253, -4.5]]
-    }
-    return finishPositions[color]?.[pawnIndex] || [0, 0, 0]
-  }
 
   const pawnRefs = useRef([])
   
@@ -184,6 +173,9 @@ const LudoBoard = forwardRef((props, ref) => {
           y: event.object.position.y,
           z: event.object.position.z
         };
+
+        console.log('🎯 Final position recorded:', newPosition);
+
         const playerColor = 
           pawnId <= 4 ? 'green' :
           pawnId <= 8 ? 'red' :

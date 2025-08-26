@@ -1,0 +1,161 @@
+// Add this to your LudoBoard component or in a separate constants file
+const BOARD_PATH = {
+  // Main track positions (52 positions, 0-51)
+  mainTrack: [
+    // Starting from green start, moving clockwise
+    [1.5, 0.253, 6.5],    // Position 0
+    [1.5, 0.253, 5.5],    // Position 1
+    [1.5, 0.253, 4.5],    // Position 2
+    [1.5, 0.253, 3.5],    // Position 3
+    [1.5, 0.253, 2.5],    // Position 4
+    [1.5, 0.253, 1.5],    // Position 5
+    [2.5, 0.253, 1.5],    // Position 6
+    [3.5, 0.253, 1.5],    // Position 7
+    [4.5, 0.253, 1.5],    // Position 8
+    [5.5, 0.253, 1.5],    // Position 9
+    [6.5, 0.253, 1.5],    // Position 10
+    
+    [6.5, 0.253, 1.5],    // Position 11 - Red entry point
+    [6.5, 0.253, 2.5],    // Position 12
+    [6.5, 0.253, 3.5],    // Position 13
+    [6.5, 0.253, 4.5],    // Position 14
+    [6.5, 0.253, 5.5],    // Position 15
+    [6.5, 0.253, 6.5],    // Position 16
+    [5.5, 0.253, 6.5],    // Position 17
+    [4.5, 0.253, 6.5],    // Position 18
+    [3.5, 0.253, 6.5],    // Position 19
+    [2.5, 0.253, 6.5],    // Position 20
+    [1.5, 0.253, 6.5],    // Position 21
+    
+    [1.5, 0.253, 6.5],    // Position 22 - Blue entry point
+    [1.5, 0.253, 5.5],    // Position 23
+    [1.5, 0.253, 4.5],    // Position 24
+    [1.5, 0.253, 3.5],    // Position 25
+    [1.5, 0.253, 2.5],    // Position 26
+    [1.5, 0.253, 1.5],    // Position 27
+    [2.5, 0.253, 1.5],    // Position 28
+    [3.5, 0.253, 1.5],    // Position 29
+    [4.5, 0.253, 1.5],    // Position 30
+    [5.5, 0.253, 1.5],    // Position 31
+    [6.5, 0.253, 1.5],    // Position 32
+    
+    [6.5, 0.253, 1.5],    // Position 33 - Yellow entry point
+    [6.5, 0.253, 2.5],    // Position 34
+    [6.5, 0.253, 3.5],    // Position 35
+    [6.5, 0.253, 4.5],    // Position 36
+    [6.5, 0.253, 5.5],    // Position 37
+    [6.5, 0.253, 6.5],    // Position 38
+    [5.5, 0.253, 6.5],    // Position 39
+    [4.5, 0.253, 6.5],    // Position 40
+    [3.5, 0.253, 6.5],    // Position 41
+    [2.5, 0.253, 6.5],    // Position 42
+    [1.5, 0.253, 6.5],    // Position 43
+    
+    [1.5, 0.253, 6.5],    // Position 44 - Green entry point
+    [1.5, 0.253, 5.5],    // Position 45
+    [1.5, 0.253, 4.5],    // Position 46
+    [1.5, 0.253, 3.5],    // Position 47
+    [1.5, 0.253, 2.5],    // Position 48
+    [1.5, 0.253, 1.5],    // Position 49
+    [2.5, 0.253, 1.5],    // Position 50
+    [3.5, 0.253, 1.5]     // Position 51
+  ],
+
+  // Home column positions for each color (6 positions each)
+  homeColumns: {
+    green: [
+      [2.5, 0.253, 5.5], [3.5, 0.253, 5.5], [4.5, 0.253, 5.5],
+      [2.5, 0.253, 4.5], [3.5, 0.253, 4.5], [4.5, 0.253, 4.5]
+    ],
+    red: [
+      [2.5, 0.253, 2.5], [3.5, 0.253, 2.5], [4.5, 0.253, 2.5],
+      [2.5, 0.253, 1.5], [3.5, 0.253, 1.5], [4.5, 0.253, 1.5]
+    ],
+    blue: [
+      [4.5, 0.253, 2.5], [4.5, 0.253, 3.5], [4.5, 0.253, 4.5],
+      [5.5, 0.253, 2.5], [5.5, 0.253, 3.5], [5.5, 0.253, 4.5]
+    ],
+    yellow: [
+      [2.5, 0.253, 4.5], [2.5, 0.253, 5.5], [2.5, 0.253, 6.5],
+      [3.5, 0.253, 4.5], [3.5, 0.253, 5.5], [3.5, 0.253, 6.5]
+    ]
+  },
+
+  // Starting positions for each color
+  startPositions: {
+    green: [1.5, 0.253, 6.5],  // Position 0
+    red: [6.5, 0.253, 1.5],    // Position 11
+    blue: [1.5, 0.253, 1.5],   // Position 22
+    yellow: [6.5, 0.253, 6.5]  // Position 33
+  },
+
+  // Safe zones (star positions)
+  safeZones: [
+    [1.5, 0.253, 6.5], [6.5, 0.253, 1.5], [1.5, 0.253, 1.5], [6.5, 0.253, 6.5],
+    [3.5, 0.253, 6.5], [6.5, 0.253, 3.5], [3.5, 0.253, 1.5], [1.5, 0.253, 3.5]
+  ]
+};
+
+// Helper function to calculate the next position
+const getNextPosition = (currentPosition, diceValue, color) => {
+  if (currentPosition === 'home') {
+    if (diceValue === 6) {
+      return BOARD_PATH.startPositions[color];
+    }
+    return 'home';
+  }
+
+  if (currentPosition === 'finish') {
+    return 'finish';
+  }
+
+  // Convert array position to track index if needed
+  let trackIndex;
+  if (Array.isArray(currentPosition)) {
+    trackIndex = BOARD_PATH.mainTrack.findIndex(pos => 
+      pos[0] === currentPosition[0] && 
+      pos[2] === currentPosition[2]
+    );
+  } else {
+    trackIndex = currentPosition;
+  }
+
+  if (trackIndex === -1) return currentPosition;
+
+  const newIndex = (trackIndex + diceValue) % 52;
+  return BOARD_PATH.mainTrack[newIndex];
+};
+
+// Function to get the complete path for a move
+const getMovePath = (startPosition, diceValue, color) => {
+  const path = [];
+  let currentPos = startPosition;
+  
+  if (startPosition === 'home') {
+    if (diceValue === 6) {
+      path.push(BOARD_PATH.startPositions[color]);
+    }
+    return path;
+  }
+
+  if (startPosition === 'finish') {
+    return path;
+  }
+
+  let currentIndex;
+  if (Array.isArray(startPosition)) {
+    currentIndex = BOARD_PATH.mainTrack.findIndex(pos => 
+      pos[0] === startPosition[0] && 
+      pos[2] === startPosition[2]
+    );
+  } else {
+    currentIndex = startPosition;
+  }
+
+  for (let i = 1; i <= diceValue; i++) {
+    const nextIndex = (currentIndex + i) % 52;
+    path.push(BOARD_PATH.mainTrack[nextIndex]);
+  }
+
+  return path;
+};

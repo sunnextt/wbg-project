@@ -9,6 +9,8 @@ import { useSocket } from '@/lib/socket'
 import { toast } from 'react-toastify'
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
+import { usePathRecorder, PathRecorderUI } from './PathRecorder'
+import { ClickPositionLogger } from './ClickPositionLogger'
 
 export default function LudoCanvas({
   gameId,
@@ -25,6 +27,16 @@ export default function LudoCanvas({
   const [currentTurnName, setCurrentTurnName] = useState('')
   const [isRolling, setIsRolling] = useState(false)
   const [remoteRollingPlayer, setRemoteRollingPlayer] = useState(null)
+
+
+  const [showDebug, setShowDebug] = useState(false)
+
+  // Initialize path recorder
+  const pathRecorder = usePathRecorder()
+
+  const handlePositionRecord = (position) => {
+    pathRecorder.setPositions(prev => [...prev, position])
+  }
 
   // Sync dice value with game state
   useEffect(() => {
@@ -184,7 +196,7 @@ export default function LudoCanvas({
       <Canvas shadows camera={{ position: [0, 25, 0], fov: 45 }} gl={{ preserveDrawingBuffer: true }}>
         <ambientLight intensity={0.6} />
         <directionalLight position={[-3, 10, 3]} intensity={1.2} castShadow />
-        <Environment preset='sunset' />
+        <Environment preset='park' />
 
         <group scale={[1.6, 1.6, 1.6]}>
           <LudoBoard
@@ -210,6 +222,38 @@ export default function LudoCanvas({
 
         <OrbitControls enableRotate={false} enableZoom={false} enablePan={false} target={[0, 0, 0]} />
       </Canvas>
+
+      
+      {/* Click Position Logger */}
+      <ClickPositionLogger 
+        onPositionRecord={handlePositionRecord}
+        isActive={pathRecorder.isRecording}
+      />
+
+      {/* Debug UI */}
+      {showDebug && <PathRecorderUI recorder={pathRecorder} />}
+
+      {/* Toggle Debug Button */}
+      <button 
+        onClick={() => setShowDebug(!showDebug)}
+        style={{
+          position: 'absolute',
+          top: '10px',
+          right: '10px',
+          zIndex: 1000,
+          padding: '10px 15px',
+          background: showDebug ? '#ff4444' : '#007acc',
+          color: 'white',
+          border: 'none',
+          borderRadius: '5px',
+          cursor: 'pointer',
+          fontFamily: 'Arial, sans-serif',
+          fontWeight: 'bold'
+        }}
+      >
+        {showDebug ? '❌ Hide Debug' : '🐛 Debug Paths'}
+      </button>
+
 
       {/* Game UI Controls */}
       <div className='absolute bottom-8 left-0 right-0 flex flex-col items-center gap-2'>
