@@ -1,14 +1,15 @@
 'use client'
 
 import { Canvas } from '@react-three/fiber'
+import { useGLTF, OrthographicCamera } from '@react-three/drei'
 import { OrbitControls, Environment } from '@react-three/drei'
 import { useEffect, useRef, useState } from 'react'
 import LudoBoard from './LudoBoard'
-import DiceAnimator from './DiceAnimator'
 import { useSocket } from '@/lib/socket'
 import { toast } from 'react-toastify'
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
+import Dice from './Dice'
 
 export default function LudoCanvas({
   gameId,
@@ -18,7 +19,10 @@ export default function LudoCanvas({
   currentPlayerId,
   gameState,
   onPawnMove,
+  onRollDice,
+  onPassTurn,
 }) {
+  const { nodes, materials } = useGLTF('/ludo_board_games.glb')
   const ludoBoardRef = useRef()
   const socket = useSocket()
   const [localDiceValue, setLocalDiceValue] = useState(0)
@@ -26,7 +30,6 @@ export default function LudoCanvas({
   const [isRolling, setIsRolling] = useState(false)
   const [remoteRollingPlayer, setRemoteRollingPlayer] = useState(null)
 
-  // Sync dice value with game state
   useEffect(() => {
     if (gameState?.diceValue !== undefined) {
       setLocalDiceValue(gameState.diceValue)
@@ -52,7 +55,7 @@ export default function LudoCanvas({
     const handleRollStart = (data) => {
       if (data.gameId === gameId && data.playerId !== currentPlayerId) {
         setRemoteRollingPlayer(data.playerId)
-        setLocalDiceValue(0) // Reset for animation
+        setLocalDiceValue(0)
       }
     }
 
@@ -76,11 +79,10 @@ export default function LudoCanvas({
     try {
       const gameRef = doc(db, 'games', gameId)
 
-      // Start rolling (visible to all players)
       await updateDoc(gameRef, {
         isRolling: true,
         rollingPlayerId: currentPlayerId,
-        diceValue: 0, // Reset while rolling
+        diceValue: 0,
         lastAction: {
           type: 'dice_roll_start',
           playerId: currentPlayerId,
@@ -105,6 +107,7 @@ export default function LudoCanvas({
   const handleRollComplete = async (result) => {
     try {
       const gameRef = doc(db, 'games', gameId)
+
       await updateDoc(gameRef, {
         isRolling: false,
         rollingPlayerId: null,
@@ -126,6 +129,8 @@ export default function LudoCanvas({
 
       setLocalDiceValue(result)
       setIsRolling(false)
+
+      onRollDice(result)
     } catch (error) {
       console.error('Failed to update dice value:', error)
       toast.error('Failed to update dice roll')
@@ -149,8 +154,9 @@ export default function LudoCanvas({
     )
   }
 
+
   const getRollingStatus = () => {
-    if (isRolling) return currentPlayerId !== currentTurn? `${currentTurnName} is rolling...` : 'You are rolling...'
+    if (isRolling) return currentPlayerId !== currentTurn ? `${currentTurnName} is rolling...` : 'You are rolling...'
     if (currentPlayerId !== currentTurn) return `${currentTurnName} is making move`
     return null
   }
@@ -175,40 +181,52 @@ export default function LudoCanvas({
     }
   }
 
-  // console.log(isRolling)
-
   return (
     <div className='relative w-full h-screen overflow-hidden flex items-center justify-center bg-gradient-to-br from-blue-900 to-purple-600'>
       <div className="absolute inset-0 bg-[url('/images/ludo-bg.jpg')] bg-cover bg-center opacity-10 blur-sm z-0 pointer-events-none" />
 
-      <Canvas shadows camera={{ position: [0, 25, 0], fov: 45 }} gl={{ preserveDrawingBuffer: true }}>
-        <ambientLight intensity={0.6} />
-        <directionalLight position={[-3, 10, 3]} intensity={1.2} castShadow />
+      <Canvas
+        shadows
+        // camera={{ position: [0, 25, 0], fov: 45, far: 1000 }}
+        gl={{ preserveDrawingBuffer: true }}
+      >
+        <OrthographicCamera
+          makeDefault
+          position={[0, 25, 0]}
+          zoom={45}
+        />
+        <ambientLight intensity={0.5} />
+        <directionalLight position={[10, 20, 10]} intensity={1.2} castShadow />
         <Environment preset='sunset' />
 
-        <group scale={[1.6, 1.6, 1.6]}>
-          <LudoBoard
-            ref={ludoBoardRef}
-            gameState={gameState}
-            currentPlayerId={currentPlayerId}
-            onPawnMove={handlePawnMove}
-            players={players}
-            socket={socket}
-            gameId={gameId}
-          />
-        </group>
-        {ludoBoardRef.current?.diceRef && (
-          <DiceAnimator
-            diceRef={ludoBoardRef.current.diceRef}
-            trigger={isRolling}
-            rollingPlayerId={remoteRollingPlayer}
-            currentPlayerId={currentPlayerId}
-            onFinish={handleRollComplete}
-            currentValue={localDiceValue}
-          />
-        )}
+        <LudoBoard
+          ref={ludoBoardRef}
+          gameState={gameState}
+          currentPlayerId={currentPlayerId}
+          onPawnMove={handlePawnMove}
+          players={players}
+          socket={socket}
+          gameId={gameId}
+          nodes={nodes}
+          materials={materials}
+          onPassTurn={onPassTurn}
+        />
 
-        <OrbitControls enableRotate={false} enableZoom={false} enablePan={false} target={[0, 0, 0]} />
+        <Dice
+          onRollEnd={handleRollComplete}
+          isRolling={isRolling}
+          rollingPlayerId={remoteRollingPlayer || currentPlayerId}
+          currentPlayerId={currentPlayerId}
+          currentValue={localDiceValue}
+        />
+
+        <OrbitControls
+          enableRotate={false}
+          enableZoom={false}
+          enablePan={false}
+          target={[0, 0, 0]}
+          maxPolarAngle={Math.PI / 2.2}
+        />
       </Canvas>
 
       {/* Game UI Controls */}
@@ -225,7 +243,7 @@ export default function LudoCanvas({
               canRollDice()
                 ? 'bg-yellow-400 hover:bg-yellow-500 text-black'
                 : 'bg-gray-500 text-gray-200 cursor-not-allowed'
-            }
+            } 
             ${isRolling || remoteRollingPlayer ? 'opacity-70 scale-95' : 'hover:scale-105'}`}
           disabled={!canRollDice()}
         >
@@ -241,11 +259,13 @@ export default function LudoCanvas({
       )}
 
       {/* Turn indicator */}
-{gameStatus == 'playing' && 
-  <div className='absolute top-4 left-4 bg-black bg-opacity-70 text-white p-3 rounded-lg z-20'>
-    {currentPlayerId === currentTurn ? 'Your turn!' : `${currentTurnName}'s turn`}
-  </div>
-}
+      {gameStatus == 'playing' && (
+        <div className='absolute top-4 left-4 bg-black bg-opacity-70 text-white p-3 rounded-lg z-20'>
+          {currentPlayerId === currentTurn ? 'Your turn!' : `${currentTurnName}'s turn`}
+        </div>
+      )}
     </div>
   )
 }
+
+useGLTF.preload('/ludo_board_games.glb')

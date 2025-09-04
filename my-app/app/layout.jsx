@@ -23,10 +23,12 @@ export default function RootLayout({ children }) {
             autoClose={3000}
             newestOnTop
             closeOnClick
+            rtl={false}
             pauseOnFocusLoss
             draggable
             pauseOnHover
             theme='colored'
+            limit={1}
           />
         </AuthProvider>
       </body>

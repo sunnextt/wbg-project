@@ -7,13 +7,19 @@ import { db } from '@/lib/firebase'
 import { toast } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import { useSocket } from '@/lib/socket'
+import { 
+  areAllPawnsAtHome,
+  calculateNewPosition, 
+  getNextPlayerId, 
+  isValidMove
+} from '../utils/ludoUtils'
 
 export default function useLudoGameManager(gameId) {
   const { user } = useAuth()
   const socket = useSocket()
   const [gameState, setGameState] = useState(null)
   const [players, setPlayers] = useState([])
-  const [gameStatus, setGameStatus] = useState('loading') // loading, waiting, playing, finished
+  const [gameStatus, setGameStatus] = useState('loading') 
   const [currentTurn, setCurrentTurn] = useState(null)
   const [error, setError] = useState(null)
   const [pendingMove, setPendingMove] = useState(null)
@@ -56,68 +62,111 @@ export default function useLudoGameManager(gameId) {
     return () => unsubscribe()
   }, [gameId])
 
+const passTurn = useCallback(async () => {
+  try {
+    const gameRef = doc(db, 'games', gameId)
+    const gameDoc = await getDoc(gameRef)
+    
+    if (!gameDoc.exists()) throw new Error("Game document doesn't exist")
+    
+    const gameData = gameDoc.data()
+    const updatedPlayers = gameData.players || []
+    
+    await updateDoc(gameRef, {
+      currentTurn: getNextPlayerId(updatedPlayers, user.uid),
+      diceValue: 0,
+    })
+    
+    toast.info("Turn passed to next player")
+  } catch (error) {
+    console.error("Error passing turn:", error)
+    toast.error("Failed to pass turn")
+  }
+}, [gameId, user?.uid]); 
+
+
+const handlePassTurn = useCallback((data) => {
+  if (data.playerId === currentPlayerId) {
+    passTurn();
+  }
+}, [currentPlayerId, passTurn]);
+
+const handlePawnMove = useCallback((data) => {
+  if (data.playerId !== user?.uid) {
+    setLastMoveTimestamp(data.timestamp);
+    setGameState(prev => ({
+      ...prev,
+      players: processMove(prev.players, data.playerId, {
+        pawnId: data.pawnId,
+        newPosition: data.newPosition,
+        action: 'move'
+      })
+    }));
+  }
+}, [user?.uid]);
+
+const handleDiceRolled = useCallback((data) => {
+  setGameState(prev => ({
+    ...prev,
+    diceValue: data.value,
+    lastAction: {
+      type: 'dice_roll',
+      value: data.value,
+      playerId: data.playerId,
+      timestamp: new Date(data.timestamp)
+    }
+  }));
+  
+  // Check if we need to auto-pass after a dice roll
+  if (data.playerId === currentPlayerId) {
+    const currentPlayer = players.find(p => p.id === currentPlayerId);
+    if (currentPlayer) {
+      const allAtHome = areAllPawnsAtHome(currentPlayer);
+      if (allAtHome && data.value !== 6) {
+        // Auto-pass if all pawns are at home and didn't roll a 6
+        setTimeout(() => {
+          passTurn();
+        }, 1000);
+      }
+    }
+  }
+}, [currentPlayerId, players, passTurn]);
+
+const handleMoveError = useCallback((error) => {
+  console.log(error);
+  
+  if (pendingMove?.pawnId === error.pawnId) {
+    setPendingMove(null);
+  }
+}, [pendingMove]);
+
+const handlePlayerDisconnected = useCallback(({ playerId }) => {
+  const playerName = players.find(p => p.id === playerId)?.name || 'A player';
+  toast.warning(`${playerName} disconnected`);
+}, [players]);
+
   useEffect(() => {
     if (!socket || !gameId) return
 
     socket.emit('join-game', gameId)
 
-    const handlePawnMove = (data) => {
-      if (data.playerId !== user?.uid) {
-        setLastMoveTimestamp(data.timestamp)
-        setGameState(prev => ({
-          ...prev,
-          players: processMove(prev.players, data.playerId, {
-            pawnId: data.pawnId,
-            newPosition: data.newPosition,
-            action: 'move'
-          })
-        }))
-      }
-    }
+    // Add all socket listeners
+  socket.on('pass-turn', handlePassTurn);
+  socket.on('pawn-move', handlePawnMove);
+  socket.on('dice-rolled', handleDiceRolled);
+  socket.on('move-error', handleMoveError);
+  socket.on('player-disconnected', handlePlayerDisconnected);
 
-    // Handle dice rolls
-  const handleDiceRolled = (data) => {
-    setGameState(prev => ({
-      ...prev,
-      diceValue: data.value,
-      lastAction: {
-        type: 'dice_roll',
-        value: data.value,
-        playerId: data.playerId,
-        timestamp: new Date(data.timestamp)
-      }
-    }))
-  }
-
-    // Handle move errors
-    const handleMoveError = (error) => {
-      toast.error(`Move failed: ${error.message}`)
-      if (pendingMove?.pawnId === error.pawnId) {
-        setPendingMove(null)
-      }
-    }
-
-    // Handle player disconnections
-    const handlePlayerDisconnected = ({ playerId }) => {
-      const playerName = players.find(p => p.id === playerId)?.name || 'A player'
-      toast.warning(`${playerName} disconnected`)
-    }
-
-    
-
-    socket.on('pawn-move', handlePawnMove)
-    socket.on('dice-rolled', handleDiceRolled)
-    socket.on('move-error', handleMoveError)
-    socket.on('player-disconnected', handlePlayerDisconnected)
-
-    return () => {
-      socket.off('pawn-move', handlePawnMove)
-      socket.off('dice-rolled', handleDiceRolled)
-      socket.off('move-error', handleMoveError)
-      socket.off('player-disconnected', handlePlayerDisconnected)
-      socket.emit('leave-game', gameId)
-    }
-  }, [socket, gameId, user?.uid, players, pendingMove])
+  return () => {
+    // Remove all socket listeners
+    socket.off('pass-turn', handlePassTurn);
+    socket.off('pawn-move', handlePawnMove);
+    socket.off('dice-rolled', handleDiceRolled);
+    socket.off('move-error', handleMoveError);
+    socket.off('player-disconnected', handlePlayerDisconnected);    
+    socket.emit('leave-game', gameId);
+  };
+  }, [socket, gameId, user?.uid, players, pendingMove, passTurn])
 
 
   const joinGame = async () => {
@@ -197,7 +246,6 @@ export default function useLudoGameManager(gameId) {
 }
 const startGame = async () => {
   if (!user) {
-    toast.error('You must be logged in to start a game');
     return false;
   }
 
@@ -235,22 +283,19 @@ const startGame = async () => {
     toast.success('Game started!');
     return true;
   } catch (error) {
-    console.error('Error starting game:', error);
-    toast.error('Failed to start game');
+    // console.error('Error starting game:', error);
     return false;
   }
 };
 
 const leaveGame = async () => {
   if (!user) {
-    toast.error('You must be logged in to leave a game');
     return false;
   }
 
   try {
     const gameRef = doc(db, 'games', gameId);
     
-    // Use transaction for atomic operation
     await runTransaction(db, async (transaction) => {
       const gameDoc = await transaction.get(gameRef);
       if (!gameDoc.exists()) {
@@ -302,20 +347,10 @@ const leaveGame = async () => {
     toast.success('You have left the game');
     return true;
   } catch (error) {
-    console.error('Error leaving game:', error);
-    toast.error(error.message || 'Failed to leave game');
+    // console.error('Error leaving game:', error);
     return false;
   }
 };
-const getNextPlayerId = (players, currentPlayerId) => {
-    const activePlayers = players.filter((p) => !p.resigned)
-    if (activePlayers.length === 0) return null
-
-    const currentIndex = activePlayers.findIndex((p) => p.id === currentPlayerId)
-    const nextIndex = (currentIndex + 1) % activePlayers.length
-    return activePlayers[nextIndex].id
-  }
-
   const processMove = (players, playerId, moveData) => {
     return players.map((player) => {
       if (player.id !== playerId) return player
@@ -331,41 +366,44 @@ const getNextPlayerId = (players, currentPlayerId) => {
     })
   }
 
-  const checkWinCondition = (players, playerId) => {
-    const player = players.find((p) => p.id === playerId)
-    if (!player) return false
-
-    // Check if all pawns are in finish position
-    return player.pawns.every((pawn) => pawn.position === 'finish')
-  }
-
-
 const handleDiceRoll = useCallback(async (diceValue) => {
-  if (!user || !socket || currentTurn !== user.uid) {
-    toast.error("It's not your turn to roll!")
-    return
+  if (typeof diceValue !== 'number' || isNaN(diceValue) || diceValue < 1 || diceValue > 6) {
+    console.error("Invalid dice value:", diceValue);
+    toast.error("Invalid dice roll result");
+    return;
   }
+
+
+  if (!user || !socket || currentTurn !== user.uid) {
+    return;
+  }
+
 
   try {
-    const gameRef = doc(db, 'games', gameId)
-    const gameDoc = await getDoc(gameRef)
+    const gameRef = doc(db, 'games', gameId);
+    const gameDoc = await getDoc(gameRef);
     
-    if (!gameDoc.exists()) throw new Error("Game document doesn't exist")
-    const gameData = gameDoc.data()
+    if (!gameDoc.exists()) throw new Error("Game document doesn't exist");
+    const gameData = gameDoc.data();
     
-    if (gameData.status !== 'playing') throw new Error("Game is not in playing state")
-    if (gameData.currentTurn !== user.uid) throw new Error("Turn changed before roll completed")
+    if (gameData.status !== 'playing') throw new Error("Game is not in playing state");
+    if (gameData.currentTurn !== user.uid) throw new Error("Turn changed before roll completed");
 
-    // Update game state immediately with the dice roll
+    // Check if all pawns are at home
+    const currentPlayer = players?.find(p => p.id === currentPlayerId);
+    if (!currentPlayer) throw new Error("Player not found in game");
+    
+    const allAtHome = areAllPawnsAtHome(currentPlayer);
+    
     await updateDoc(gameRef, {
-      diceValue,
+      diceValue: diceValue,
       lastAction: {
         type: 'dice_roll',
         value: diceValue,
         playerId: user.uid,
         timestamp: serverTimestamp()
       }
-    })
+    });
 
     // Emit socket event for real-time update
     socket.emit('dice-rolled', {
@@ -373,81 +411,52 @@ const handleDiceRoll = useCallback(async (diceValue) => {
       playerId: user.uid,
       value: diceValue,
       timestamp: Date.now()
-    })
+    });
 
-    if (diceValue === 6) {
-      toast.success("You rolled a 6! Roll again")
-    } else {
-      // If not 6, check if player has valid moves
-      const currentPlayer = gameData.players?.find(p => p.id === user.uid)
-      if (!currentPlayer) throw new Error("Player not found in game")
+    if (allAtHome && diceValue !== 6) {
+      setTimeout(() => {
+        passTurn();
+      }, 1000);
+    } else if (diceValue === 6) {
+      // toast.success("You rolled a 6! Roll again");
+      console.log("You rolled a 6! Roll again");
       
-      const hasValidMoves = checkValidMoves(currentPlayer.pawns || [], diceValue)
-      if (!hasValidMoves) {
-        await passTurn()
-      }
     }
   } catch (error) {
-    console.error("Dice roll error:", error)
-    toast.error(`Dice roll failed: ${error.message}`)
+    console.error("Dice roll error:", error);
+    // toast.error(`Dice roll failed: ${error.message}`);
   }
-}, [user, socket, gameId, currentTurn])
+}, [user, socket, gameId, currentTurn, passTurn]);
 
 const checkValidMoves = (pawns, diceValue) => {
-  if (!Array.isArray(pawns)) {
-    console.error('Invalid pawns array:', pawns)
-    return false
-  }
-
-  return pawns.some(pawn => {
-    // Check if pawn can move out of home (needs a 6)
-    if (pawn.position === 'home') {
-      return diceValue === 6
-    }
-    // Check if pawn is already in finish position
-    if (pawn.position === 'finish') {
+    if (!Array.isArray(pawns)) {
+      console.error('Invalid pawns array:', pawns)
       return false
     }
-    // For pawns on the board, any move is valid
-    return true
-  })
-}
 
-const passTurn = async () => {
-  try {
-    const gameRef = doc(db, 'games', gameId)
-    const gameDoc = await getDoc(gameRef)
-    
-    if (!gameDoc.exists()) throw new Error("Game document doesn't exist")
-    
-    const gameData = gameDoc.data()
-    const updatedPlayers = gameData.players || []
-    
-    await updateDoc(gameRef, {
-      currentTurn: getNextPlayerId(updatedPlayers, user.uid),
-      diceValue: 0,
+    return pawns.some(pawn => {
+      if (pawn.position === 'home') {
+        return diceValue === 6
+      }
+      if (pawn.position === 'finish') {
+        return false
+      }
+      return true
     })
-    
-    toast.info("Turn passed to next player")
-  } catch (error) {
-    console.error("Error passing turn:", error)
-    toast.error("Failed to pass turn")
   }
-}
+
+
+const checkWinCondition = (players, playerId) => {
+    const player = players.find(p => p.id === playerId);
+    if (!player) return false;
+    return player.pawns.every(pawn => pawn.position === 'finish');
+  };
 
 const makeMove = useCallback(async (moveData) => {
-  if (!user || !gameState || !socket) {
-    toast.error('Connection error. Please try again.');
+  if (!user || !socket) {
     return false;
   }
 
-  // Validate it's the player's turn
-  if (gameState.currentTurn !== user.uid) {
-    toast.error('Not your turn!');
-    return false;
-  }
-
-  // Validate move data
   if (!moveData || !moveData.pawnId || !moveData.newPosition) {
     toast.error('Invalid move data');
     return false;
@@ -455,108 +464,116 @@ const makeMove = useCallback(async (moveData) => {
 
   try {
     const gameRef = doc(db, 'games', gameId);
+    const gameDoc = await getDoc(gameRef);
     
-    await runTransaction(db, async (transaction) => {
-      const gameDoc = await transaction.get(gameRef);
-      if (!gameDoc.exists()) {
-        throw new Error('Game not found');
-      }
+    if (!gameDoc.exists()) throw new Error('Game not found');
+    
+    const currentGameState = gameDoc.data();
 
-      const currentGameState = gameDoc.data();
-      
-      // Additional validation
-      if (currentGameState.status !== 'playing') {
-        throw new Error('Game is not in progress');
-      }
+    if (currentGameState.currentTurn !== user.uid) {
+      throw new Error('Not your turn!');
+    }
 
-      if (currentGameState.currentTurn !== user.uid) {
-        throw new Error('Turn changed before move completed');
-      }
+    const [color, pawnIndexStr] = moveData.pawnId.split('-');
+    const pawnIndex = parseInt(pawnIndexStr);
+    
+    if (isNaN(pawnIndex) || pawnIndex < 0 || pawnIndex > 3) {
+      throw new Error('Invalid pawn selection');
+    }
 
-      // Parse pawn information
-      const [color, pawnIndexStr] = moveData.pawnId.split('-');
-      const pawnIndex = parseInt(pawnIndexStr);
-      
-      if (isNaN(pawnIndex) || pawnIndex < 0 || pawnIndex > 3) {
-        throw new Error('Invalid pawn selection');
-      }
+    const currentPlayer = currentGameState.players.find(p => p.id === user.uid);
+    if (!currentPlayer) {
+      throw new Error('Player not found in game');
+    }
 
-      // Find the current player
-      const currentPlayer = currentGameState.players.find(p => p.id === user.uid);
-      if (!currentPlayer) {
-        throw new Error('Player not found in game');
-      }
+    const playerPawns = Array.isArray(currentPlayer.pawns) 
+      ? [...currentPlayer.pawns] 
+      : Array(4).fill({ position: 'home' });
 
-      // Ensure pawns exists and is an array
-      const playerPawns = Array.isArray(currentPlayer.pawns) 
-        ? [...currentPlayer.pawns] 
-        : Array(4).fill({ position: 'home' });
+    const currentPawn = playerPawns[pawnIndex];
+    const currentPosition = currentPawn.position;
+    
+    const newPosition = calculateNewPosition(
+      currentPosition,
+      currentGameState.diceValue,
+      currentPlayer.color,
+      pawnIndex
+    );
 
-      // Validate the move
-      // if (!isValidMove(currentPlayer, pawnIndex, moveData.newPosition, currentGameState.diceValue)) {
-      //   throw new Error('Invalid move according to game rules');
-      // }
+    if (!isValidMove(currentPosition, newPosition, currentGameState.diceValue, currentPlayer.color)) {
+      throw new Error('Invalid move according to game rules');          
+    }
 
-      // Update the pawn position
-      playerPawns[pawnIndex] = {
-        ...playerPawns[pawnIndex],
-        position: moveData.newPosition
-      };
+    playerPawns[pawnIndex] = {
+      ...currentPawn,
+      position: newPosition
+    };
 
-      // Update players array
-      const updatedPlayers = currentGameState.players.map(player => 
-        player.id === user.uid 
-          ? { ...player, pawns: playerPawns } 
-          : player
-      );
+    const updatedPlayers = currentGameState.players.map(player => 
+      player.id === user.uid 
+        ? { ...player, pawns: playerPawns } 
+        : player
+    );
 
-      // Check win condition
-      const hasWon = checkWinCondition(updatedPlayers, user.uid);
+    const hasWon = checkWinCondition(updatedPlayers, user.uid);
 
-      // Prepare update data
-      const updateData = {
-        players: updatedPlayers,
-        lastMove: {
-          playerId: user.uid,
-          action: 'move',
-          pawnId: moveData.pawnId,
-          timestamp: serverTimestamp()
-        },
-        diceValue: 0, // Reset dice after move
-        ...(hasWon ? {
-          status: 'finished',
-          winner: user.uid,
-          finishedAt: serverTimestamp()
-        } : {})
-      };
-
-      // Set next turn (unless player won or rolled a 6)
-      if (!hasWon && currentGameState.diceValue !== 6) {
-        updateData.currentTurn = getNextPlayerId(updatedPlayers, user.uid);
-      }
-
-      transaction.update(gameRef, updateData);
-
-      // Emit move via socket
-      socket.emit('pawn-move', {
-        gameId,
+    const updateData = {
+      players: updatedPlayers,
+      lastMove: {
         playerId: user.uid,
+        action: 'move',
         pawnId: moveData.pawnId,
-        newPosition: moveData.newPosition,
-        timestamp: Date.now(),
-        isWin: hasWon,
-        nextTurn: updateData.currentTurn
-      });
+        timestamp: serverTimestamp()
+      },
+      diceValue: 0, 
+    };
+
+    if (!hasWon && currentGameState.diceValue !== 6) {
+      updateData.currentTurn = getNextPlayerId(updatedPlayers, user.uid);
+    }
+
+    if (hasWon) {
+      updateData.status = 'finished';
+      updateData.winner = user.uid;
+      updateData.finishedAt = serverTimestamp();
+    }
+
+    await updateDoc(gameRef, updateData);
+
+    socket.emit('pawn-move', {
+      gameId,
+      playerId: user.uid,
+      pawnId: moveData.pawnId,
+      newPosition: newPosition,
+      timestamp: Date.now(),
+      isWin: hasWon,
+      nextTurn: updateData.currentTurn || user.uid 
     });
+
+    if (hasWon) {
+      toast.success('Congratulations! You won the game!');
+    } else if (currentGameState.diceValue === 6) {
+      // toast.info('Move completed. Roll again!');
+       console.log('Move completed. Roll again!');
+    } else {
+      // toast.success('Move completed!');
+      console.log("Move completed!");
+      
+    }
 
     return true;
   } catch (error) {
     console.error('Move failed:', error);
-    toast.error(error.message || 'Move failed');
+    
+    if (error.message.includes('Turn changed') || error.message.includes('Not your turn')) {
+      toast.error('It is no longer your turn. Please wait for your next turn.');
+    } else {
+      toast.error(error.message || 'Move failed');
+    }
+    
     return false;
   }
-}, [user, gameState, socket, gameId]);
-
+}, [user, socket, gameId]);
   return {
     gameState,
     players,

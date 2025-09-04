@@ -1,35 +1,39 @@
-'use client'
+"use client";
+import { Canvas } from "@react-three/fiber";
+import { OrbitControls, useGLTF, Environment } from "@react-three/drei";
+import Dice from "@/src/components/ludo/Dice.jsx"; 
+import { useState } from "react";
 
-import PlayerCard from '@/src/components/PlayerCard'
-import SidebarFriends from '@/src/components/SidebarUsers'
-import LudoCanvas from '@/src/components/ludo/LudoCanvas'
+export default function HomePage() {
+const { nodes, materials } = useGLTF('/ludo_board_games.glb')
+  const [rolled, setRolled] = useState(null);
 
-export default function LudoGamePage() {
   return (
-    <main className="bg-green-50 min-h-screen">
-      <div className="container mx-auto px-4 py-4 grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-9 flex justify-center items-center">
-          <LudoCanvas />
-        </div>
+    <div className="w-screen h-screen">
+      <Canvas
+        shadows
+        camera={{ position: [0, 25, 0], fov: 45 }}
+        gl={{ preserveDrawingBuffer: true }}
+      >
+        <ambientLight intensity={0.6} />
+        <directionalLight position={[-3, 10, 3]} intensity={1.2} castShadow />
+        <Environment preset="sunset" />
 
-        <div className="lg:col-span-3 space-y-6">
-          <SidebarFriends />
+        <Dice
+          nodes={nodes}
+          materials={materials}
+          position={[0, 0, 0]}
+          onRollEnd={(value) => setRolled(value)}
+        />
 
-          <section>
-            <h3 className="text-md font-semibold text-gray-700 mb-2">🏆 Top Players</h3>
-            <div className="space-y-3">
-              <PlayerCard name="Drake" points={125} />
-              <PlayerCard name="K.dot" points={118} />
-            </div>
-            <a
-              href="#"
-              className="text-pink-600 text-sm font-medium mt-2 inline-block"
-            >
-              View All Leaderboards →
-            </a>
-          </section>
+        <OrbitControls enablePan={false} maxPolarAngle={Math.PI / 2.2} />
+      </Canvas>
+
+      {rolled && (
+        <div className="absolute top-5 left-5 p-4 bg-white shadow-lg rounded-lg text-black">
+          🎲 Rolled: {rolled}
         </div>
-      </div>
-    </main>
-  )
+      )}
+    </div>
+  );
 }
