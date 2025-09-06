@@ -40,11 +40,6 @@ const Dice = forwardRef(
         if (rollingPlayerId === currentPlayerId && finalValue > 0) {
           if (onRollEnd) onRollEnd(finalValue)
         }
-        if (debugMode) {
-          setTimeout(() => {
-            detectTopFace()
-          }, 100)
-        }
       },
     })
 

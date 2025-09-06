@@ -1,6 +1,5 @@
 import Image from 'next/image'
 import LudoBoard from '../img/ludo-board.webp'
-import Link from 'next/link'
 
 export default function FeaturedBanner({onClick, disabled}) {
   return (

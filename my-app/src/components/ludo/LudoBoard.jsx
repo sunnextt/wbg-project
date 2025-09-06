@@ -95,35 +95,6 @@ const LudoBoard = forwardRef((props, ref) => {
     }
   }, [gameState]);
 
-    // Update clickable pawns
-  //   useEffect(() => {
-  //   if (gameState?.players && gameState.currentTurn === currentPlayerId && gameState.diceValue > 0) {
-  //     const currentPlayer = players?.find(p => p.id === currentPlayerId);
-  //     if (!currentPlayer) return;
-      
-  //     const movablePawns = currentPlayer.pawns
-  //       .map((pawn, index) => {
-  //         const calculatedPosition = calculateNewPosition(
-  //           pawn.position,
-  //           gameState.diceValue,
-  //           currentPlayer.color,
-  //           index
-  //         );
-          
-  //         return {
-  //           pawnIndex: index,
-  //           canMove: isValidMove(pawn.position, calculatedPosition, gameState.diceValue, currentPlayer.color),
-  //           calculatedPosition
-  //         };
-  //       })
-  //       .filter(pawn => pawn.canMove);
-      
-  //     setClickablePawns(movablePawns);
-  //   } else {
-  //     setClickablePawns([]);
-  //   }
-  // }, [gameState, currentPlayerId, players]);
-
   const pawnRefs = useRef([])
   
   // Update clickable pawns

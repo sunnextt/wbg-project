@@ -154,12 +154,11 @@ export default function LudoCanvas({
     )
   }
 
-
-  const getRollingStatus = () => {
-    if (isRolling) return currentPlayerId !== currentTurn ? `${currentTurnName} is rolling...` : 'You are rolling...'
-    if (currentPlayerId !== currentTurn) return `${currentTurnName} is making move`
-    return null
-  }
+  // const getRollingStatus = () => {
+  //   if (isRolling) return currentPlayerId !== currentTurn ? `${currentTurnName} is rolling...` : 'You are rolling...'
+  //   if (currentPlayerId !== currentTurn) return `${currentTurnName} is making move`
+  //   return null
+  // }
 
   const getButtonText = () => {
     if (isRolling) return 'Rolling...'
@@ -190,11 +189,7 @@ export default function LudoCanvas({
         // camera={{ position: [0, 25, 0], fov: 45, far: 1000 }}
         gl={{ preserveDrawingBuffer: true }}
       >
-        <OrthographicCamera
-          makeDefault
-          position={[0, 25, 0]}
-          zoom={45}
-        />
+        <OrthographicCamera makeDefault position={[0, 25, 0]} zoom={45} />
         <ambientLight intensity={0.5} />
         <directionalLight position={[10, 20, 10]} intensity={1.2} castShadow />
         <Environment preset='sunset' />
@@ -231,11 +226,11 @@ export default function LudoCanvas({
 
       {/* Game UI Controls */}
       <div className='absolute bottom-8 left-0 right-0 flex flex-col items-center gap-2'>
-        {gameStatus == 'playing' && getRollingStatus() && (
+        {/* {gameStatus == 'playing' && getRollingStatus() && (
           <div className='text-white text-lg font-semibold bg-black bg-opacity-70 px-4 py-2 rounded-full'>
             {getRollingStatus()}
           </div>
-        )}
+        )} */}
         <button
           onClick={handleRollDice}
           className={`px-8 py-3 rounded-full font-bold text-lg shadow-lg transition-all
