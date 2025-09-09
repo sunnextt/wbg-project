@@ -19,7 +19,6 @@ export function AuthProvider({ children }) {
           setUser(firebaseUser);
           setToken(idToken);
         } catch (error) {
-          console.error('Error fetching token:', error);
           setUser(null);
           setToken(null);
         }

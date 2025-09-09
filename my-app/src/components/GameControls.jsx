@@ -31,12 +31,6 @@ export default function GameControls({ gameStatus, players, onJoin, onStart, onL
       )}
 
       {isInGame && (
-        // <button
-        //   onClick={onLeave}
-        //   className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 mt-2 rounded-lg"
-        // >
-        //   Leave Game
-        // </button>
 
         <button
           onClick={async () => {

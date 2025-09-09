@@ -82,142 +82,108 @@ io.on("connection", (socket) => {
     });
 
     // --- Game Events ---
- socket.on("pass-turn", async (data) => {
-  try {
-    const { gameId } = data;
-    console.log(`Player ${uid} requesting to pass turn in game ${gameId}`);
-
-    // Validate the turn pass
-    const gameRef = admin.firestore().doc(`games/${gameId}`);
-    const gameDoc = await gameRef.get();
-
-    if (!gameDoc.exists) throw new Error("Game not found");
-    if (gameDoc.data().status !== "playing")
-      throw new Error("Game not in progress");
-    if (gameDoc.data().currentTurn !== uid)
-      throw new Error("Not your turn");
-
-    // Get the game data
-    const gameData = gameDoc.data();
-    const players = gameData.players || [];
-    const activePlayers = players.filter(p => !p.resigned);
-    
-    if (activePlayers.length === 0) {
-      throw new Error("No active players");
-    }
-
-    // Find next player
-    const currentIndex = activePlayers.findIndex(p => p.id === uid);
-    const nextIndex = (currentIndex + 1) % activePlayers.length;
-    const nextPlayerId = activePlayers[nextIndex].id;
-
-    // Update the game state in Firebase
-    await gameRef.update({
-      currentTurn: nextPlayerId,
-      diceValue: 0, // Reset dice after turn pass
-      lastAction: {
-        type: 'turn_pass',
-        playerId: uid,
-        timestamp: admin.firestore.FieldValue.serverTimestamp()
+    socket.on("pass-turn", async (data) => {
+      try {
+        const { gameId } = data;
+        
+        socket.to(gameId).emit("pass-turn", {
+          ...data,
+          timestamp: Date.now(),
+        });
+      } catch (error) {
+        console.error("Turn pass failed:", error);
+        socket.emit("pass-turn-error", {
+          message: error.message,
+        });
       }
     });
 
-    // Broadcast to all players in the game
-    io.to(gameId).emit("turn-passed", {
-      gameId,
-      previousPlayerId: uid,
-      nextPlayerId,
-      timestamp: Date.now()
+    socket.on("pawn-move", async (data) => {
+      try {
+        const {
+          gameId,
+          pawnId,
+          newPosition,
+          isWin,
+          captureCount,
+          victimPlayer,
+        } = data;
+
+        // Validate the move
+        const gameRef = admin.firestore().doc(`games/${gameId}`);
+        const gameDoc = await gameRef.get();
+
+        if (!gameDoc.exists) throw new Error("Game not found");
+        if (gameDoc.data().status !== "playing")
+          throw new Error("Game not in progress");
+        if (gameDoc.data().currentTurn !== uid)
+          throw new Error("Not your turn");
+
+        // Broadcast to all players in the game except sender
+        socket.to(gameId).emit("pawn-move", {
+          gameId,
+          playerId: uid,
+          pawnId,
+          newPosition,
+          timestamp: Date.now(),
+          isWin,
+          captureCount,
+          victimPlayer,
+        });
+
+        // Optional: Update Firebase here if you want server to be authoritative
+      } catch (error) {
+        console.error("Move validation failed:", error);
+        socket.emit("move-error", {
+          message: error.message,
+          pawnId: data.pawnId,
+        });
+      }
     });
 
-    console.log(`Turn passed from ${uid} to ${nextPlayerId} in game ${gameId}`);
+    socket.on("pawn-dragging", (data) => {
+      const { gameId, pawnId, newPosition } = data;
 
-  } catch (error) {
-    console.error("Turn pass failed:", error);
-    socket.emit("pass-turn-error", {
-      message: error.message,
-    });
-  }
-});
+      console.log("gameId one", gameId);
 
-socket.on("pawn-move", async (data) => {
-  try {
-    const { gameId, pawnId, newPosition } = data;
-
-    // Validate the move
-    const gameRef = admin.firestore().doc(`games/${gameId}`);
-    const gameDoc = await gameRef.get();
-
-    if (!gameDoc.exists) throw new Error("Game not found");
-    if (gameDoc.data().status !== "playing")
-      throw new Error("Game not in progress");
-    // if (gameDoc.data().currentTurn !== uid)
-    //   throw new Error("Not your turn");
-
-    // Broadcast to all players in the game except sender
-    socket.to(gameId).emit("pawn-move", {
-      gameId,
-      playerId: uid,
-      pawnId,
-      newPosition,
-      timestamp: Date.now(),
+      // Broadcast to everyone in the same game room except sender
+      socket.to(gameId).emit("pawn-dragging", {
+        gameId,
+        playerId: uid,
+        pawnId,
+        newPosition,
+        timestamp: Date.now(),
+      });
     });
 
-    console.log("newPosition");
+    socket.on("dice-roll", async (data) => {
+      try {
+        const { gameId, value } = data;
 
-    // Optional: Update Firebase here if you want server to be authoritative
-  } catch (error) {
-    console.error("Move validation failed:", error);
-    socket.emit("move-error", {
-      message: error.message,
-      pawnId: data.pawnId,
+        // Validate the dice roll
+        const gameRef = admin.firestore().doc(`games/${gameId}`);
+        const gameDoc = await gameRef.get();
+
+        if (!gameDoc.exists) throw new Error("Game not found");
+        if (gameDoc.data().status !== "playing")
+          throw new Error("Game not in progress");
+        if (gameDoc.data().currentTurn !== uid)
+          throw new Error("Not your turn");
+
+        // Broadcast to all players
+        io.to(gameId).emit("dice-rolled", {
+          gameId,
+          playerId: uid,
+          value,
+          timestamp: Date.now(),
+        });
+      } catch (error) {
+        console.error("Dice roll failed:", error);
+        socket.emit("dice-error", {
+          message: error.message,
+        });
+      }
     });
-  }
-});
-
-socket.on("pawn-dragging", (data) => {
-  const { gameId, pawnId, newPosition } = data;
-
-  console.log("gameId one", gameId);
-
-  // Broadcast to everyone in the same game room except sender
-  socket.to(gameId).emit("pawn-dragging", {
-    gameId,
-    playerId: uid,
-    pawnId,
-    newPosition,
-    timestamp: Date.now(),
-  });
-});
-
-socket.on("dice-roll", async (data) => {
-  try {
-    const { gameId, value } = data;
-
-    // Validate the dice roll
-    const gameRef = admin.firestore().doc(`games/${gameId}`);
-    const gameDoc = await gameRef.get();
-
-    if (!gameDoc.exists) throw new Error("Game not found");
-    if (gameDoc.data().status !== "playing")
-      throw new Error("Game not in progress");
-    if (gameDoc.data().currentTurn !== uid)
-      throw new Error("Not your turn");
-
-    // Broadcast to all players
-    io.to(gameId).emit("dice-rolled", {
-      gameId,
-      playerId: uid,
-      value,
-      timestamp: Date.now(),
-    });
-  } catch (error) {
-    console.error("Dice roll failed:", error);
-    socket.emit("dice-error", {
-      message: error.message,
-    });
-  }
-});
 
     socket.on("privateMessage", ({ to, message }) => {
       const recipientSocketId = onlineUsers.get(to);

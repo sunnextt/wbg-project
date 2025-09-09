@@ -35,151 +35,146 @@ export const isSafeSquare = (position) => {
   return safeSquares.some(safePos => positionsEqual(safePos, position));
 };
 
-export const calculateNewPosition = (currentPosition, diceValue, color, pawnIndex) => {
-  const { mainTrack, homeColumns, entryPositions, finalPositions, startPositions } = BOARD_CONFIG;
+export const calculateNewPosition = (
+  currentPosition,
+  diceValue,
+  color,
+  pawnIndex
+) => {
+  const { mainTrack, homeColumns, entryPositions, startPositions, finalPositions } =
+    BOARD_CONFIG;
 
-  // === 1. Handle Home and Finish ===
-  if (currentPosition === 'home') {
-    return diceValue === 6 ? startPositions[color] : 'home';
+  // === 1. Still at home base ===
+  if (currentPosition === "home") {
+    return diceValue === 6 ? startPositions[color] : "home";
   }
 
-  if (currentPosition === 'finish') {
-    return 'finish';
+  // === 2. Already finished ===
+  if (currentPosition === "finish") {
+    return "finish";
   }
 
-  // === 2. Inside Home Column ===
-const currentHomeIndex = homeColumns[color].findIndex(pos =>
-  positionsEqual(pos, currentPosition)
-);
-
-if (currentHomeIndex !== -1) {
-  const newHomeIndex = currentHomeIndex + diceValue;
-
-  if (newHomeIndex < homeColumns[color].length) {
-    return homeColumns[color][newHomeIndex];
-  }
-
-  // Reached or exceeded the end
-  if (newHomeIndex === homeColumns[color].length) {
-    return finalPositions[color][pawnIndex];
-  }
-
-  // Overshoot → stay
-  return currentPosition;
-}
-
-// === 3. At Entry Position ===
-if (positionsEqual(currentPosition, entryPositions[color])) {
-  if (diceValue < homeColumns[color].length) {
-    return homeColumns[color][diceValue - 1];
-  }
-
-  if (diceValue === homeColumns[color].length) {
-    return finalPositions[color][pawnIndex];
-  }
-
-  // Overshoot → stay at entry
-  return currentPosition;
-}
-
-  // === 4. On Main Track ===
-  const currentTrackIndex = mainTrack.findIndex(pos =>
+  // === 3. Inside home column ===
+  const currentHomeIndex = homeColumns[color].findIndex((pos) =>
     positionsEqual(pos, currentPosition)
   );
-  if (currentTrackIndex === -1) {
-    return currentPosition; 
+
+  if (currentHomeIndex !== -1) {
+    const newIndex = currentHomeIndex + diceValue;
+
+    if (newIndex < homeColumns[color].length - 1) {
+      return homeColumns[color][newIndex];
+    }
+
+    if (newIndex === homeColumns[color].length - 1) {
+      // land on triangle → straight to final
+      return finalPositions[color][pawnIndex];
+    }
+
+    // overshoot → can't move
+    return currentPosition;
   }
 
-  const totalPositions = mainTrack.length;
-  const newTrackIndex = (currentTrackIndex + diceValue) % totalPositions;
-  const entryIndex = mainTrack.findIndex(pos =>
+  // === 4. At entry point (still on main track) ===
+  if (positionsEqual(currentPosition, entryPositions[color])) {
+    const steps = diceValue;
+
+    if (steps <= homeColumns[color].length - 1) {
+      // normal home column move
+      return homeColumns[color][steps - 1];
+    }
+
+    if (steps === homeColumns[color].length) {
+      // exactly enough to reach triangle → go final
+      return finalPositions[color][pawnIndex];
+    }
+
+    // overshoot
+    return currentPosition;
+  }
+
+  // === 5. On the main track ===
+  const currentTrackIndex = mainTrack.findIndex((pos) =>
+    positionsEqual(pos, currentPosition)
+  );
+
+  if (currentTrackIndex === -1) {
+    console.warn("Position not found on track or home column:", currentPosition);
+    return currentPosition;
+  }
+
+  const total = mainTrack.length;
+  const newTrackIndex = (currentTrackIndex + diceValue) % total;
+  const entryIndex = mainTrack.findIndex((pos) =>
     positionsEqual(pos, entryPositions[color])
   );
 
-  // Landed exactly on entry point
+  // Landed directly on entry
   if (positionsEqual(mainTrack[newTrackIndex], entryPositions[color])) {
     return entryPositions[color];
   }
 
-  // Passed entry point? → try entering home
-  const shouldEnter = shouldEnterHomeColumn(currentTrackIndex, newTrackIndex, entryIndex, totalPositions);
-  if (shouldEnter) {
-    const stepsPastEntry = calculateStepsPastEntry(currentTrackIndex, newTrackIndex, entryIndex, totalPositions);
+  // Did we pass our entry point?
+  const passedEntry = checkPassedEntry(
+    currentTrackIndex,
+    newTrackIndex,
+    entryIndex,
+    total
+  );
 
-    if (stepsPastEntry < homeColumns[color].length) {
-      return homeColumns[color][stepsPastEntry];
+  if (passedEntry) {
+    const stepsPastEntry = calculateStepsPastEntry(
+      currentTrackIndex,
+      newTrackIndex,
+      entryIndex,
+      total
+    );
+
+    if (stepsPastEntry <= homeColumns[color].length - 1) {
+      return homeColumns[color][stepsPastEntry - 1];
     }
 
     if (stepsPastEntry === homeColumns[color].length) {
       return finalPositions[color][pawnIndex];
     }
 
-    // Overshoot → stay put
-    return currentPosition;
+    return currentPosition; // overshoot
   }
 
-  // Normal track move
+  // Normal movement around main track
   return mainTrack[newTrackIndex];
 };
 
-// === Helpers ===
+const checkPassedEntry = (current, next, entry, total) => {
+  if (current < entry) {
+    return next >= entry;
+  }
+  return next < current && next >= entry;
+};
+
+const calculateStepsPastEntry = (current, next, entry, total) => {
+  if (current < entry) {
+    return next - entry;
+  }
+  return total - current + next - entry;
+};
+
+export const isValidMove = (currentPosition, diceValue, color, pawnIndex) => {
+  const newPos = calculateNewPosition(currentPosition, diceValue, color, pawnIndex);
+
+  return {
+    isValid: !positionsEqual(currentPosition, newPos),
+    newPos
+  };
+};
+
+
 const shouldEnterHomeColumn = (currentIndex, newIndex, entryIndex, totalPositions) => {
   if (currentIndex <= entryIndex) {
     return newIndex > entryIndex;
   } else {
     return newIndex < currentIndex && newIndex > entryIndex;
   }
-};
-
-const calculateStepsPastEntry = (currentIndex, newIndex, entryIndex, totalPositions) => {
-  if (currentIndex <= entryIndex) {
-    return newIndex - entryIndex;
-  } else {
-    return (totalPositions - currentIndex) + newIndex - entryIndex;
-  }
-};
-
-
-export const isValidMove = (currentPosition, newPosition, diceValue, color, pawnIndex) => {
-  if (diceValue === 0) {
-    return { isValid: false, reason: 'no_dice_roll' };
-  }
-
-  if (currentPosition === 'home' && diceValue !== 6) {
-    return { isValid: false, reason: 'need_six_to_leave_home' };
-  }
-
-  if (currentPosition === 'finish') {
-    return { isValid: false, reason: 'pawn_already_finished' };
-  }
-
-  if (JSON.stringify(currentPosition) === JSON.stringify(newPosition)) {
-        console.log('Positions are identical!', currentPosition, newPosition);
-
-    return { isValid: false, reason: 'no_position_change' };
-  }
-
-  // Check for exact roll needed in home column
-  if (isInHomeColumn(currentPosition, color)) {
-    const homeColumn = BOARD_CONFIG.homeColumns[color];
-    const currentIndex = homeColumn.findIndex(pos => 
-      positionsEqual(pos, currentPosition)
-    );
-    
-    if (currentIndex !== -1) {
-      const requiredMove = homeColumn.length - currentIndex;
-      if (diceValue > requiredMove) {
-        return { isValid: false, reason: 'exact_roll_needed' };
-      }
-    }
-  }
-
-  // Check for exact roll needed to enter home column from entry point
-  if (isAtEntryPoint(currentPosition, color) && diceValue > BOARD_CONFIG.homeColumns[color].length + 2) {
-    return { isValid: false, reason: 'exact_roll_needed' };
-  }
-
-  return { isValid: true, reason: 'valid_move' };
 };
 
 export const checkCaptures = (position, currentPlayerColor, allPlayers) => {
@@ -236,26 +231,18 @@ export const areAllPawnsAtHome = (player) => {
 
 export const checkIfPlayerHasValidMoves = (player, diceValue) => {
   if (!player || !player.pawns || !Array.isArray(player.pawns)) return false;
-  
+
   return player.pawns.some((pawn, index) => {
-    const calculatedPosition = calculateNewPosition(
-      pawn.position,
-      diceValue,
-      player.color,
-      index
-    );
-    
     const validationResult = isValidMove(
       pawn.position,
-      calculatedPosition,
       diceValue,
       player.color,
       index
     );
-    
     return validationResult.isValid;
   });
 };
+
 
 // Get pawn ID from color and index
 export const getPawnId = (color, index) => {
@@ -341,7 +328,7 @@ export const showInvalidMoveFeedback = (object) => {
 };
 
 // Auto-pass turn if no valid moves
-export const handleAutoPassTurn = (player, diceValue, passTurnFunction, delay = 1000) => {
+export const handleAutoPassTurn = (player, diceValue, passTurnFunction, delay = 3000) => {
   const hasValidMoves = checkIfPlayerHasValidMoves(player, diceValue);
   const allAtHome = areAllPawnsAtHome(player);
   

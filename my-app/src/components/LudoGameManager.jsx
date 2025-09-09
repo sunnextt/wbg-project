@@ -1,24 +1,21 @@
-// components/LudoGameManager.jsx
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '@/lib/AuthContext'
-import { doc, getDoc, onSnapshot, updateDoc, runTransaction, serverTimestamp,deleteDoc } from 'firebase/firestore'
+import { doc, getDoc, onSnapshot, updateDoc, arrayRemove, runTransaction, serverTimestamp,deleteDoc } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { toast } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import { useSocket } from '@/lib/socket'
-import { TEST_STATES, loadTestState, validateGameState } from '@/utils/testUtils';
-
 
 import { 
   isValidMove,
-  calculateNewPosition,
   checkCaptures,
   checkWinCondition,
   getNextPlayerId,
   areAllPawnsAtHome,
   isSafeSquare
 } from '../utils/ludoUtils'
+import { useGameStatus } from '@/lib/GameStatusProvider'
 
 export default function useLudoGameManager(gameId) {
   const { user } = useAuth()
@@ -31,8 +28,9 @@ export default function useLudoGameManager(gameId) {
   const [pendingMove, setPendingMove] = useState(null)
   const [lastMoveTimestamp, setLastMoveTimestamp] = useState(0)
 
-  const [testMode, setTestMode] = useState(false);
-
+const makeMoveRef = useRef();
+  
+  const { diceRolled, noValidMoves, needSixToStart, turnPassed, pawnMoved, pawnCaptured, gameStarted } = useGameStatus()
 
   const currentPlayerId = user?.uid || null
 
@@ -55,6 +53,7 @@ export default function useLudoGameManager(gameId) {
         }
 
         const data = doc.data()
+        
         setGameState(data)
         setPlayers(data.players || [])
         setGameStatus(data.status || 'waiting')
@@ -62,7 +61,6 @@ export default function useLudoGameManager(gameId) {
         setError(null)
       },
       (err) => {
-        // console.error('Game snapshot error:', err)
         setError('Failed to load game')
         setGameStatus('error')
       }
@@ -70,6 +68,8 @@ export default function useLudoGameManager(gameId) {
 
     return () => unsubscribe()
   }, [gameId])
+
+  
 
 const passTurn = useCallback(async () => {
   try {
@@ -80,70 +80,313 @@ const passTurn = useCallback(async () => {
     
     const gameData = gameDoc.data()
     const updatedPlayers = gameData.players || []
+    const nextPlayerId = getNextPlayerId(updatedPlayers, user.uid)
+    const nextPlayer = updatedPlayers.find(p => p.id === nextPlayerId)
+    const currentPlayer = updatedPlayers.find(p => p.id === user.uid)
     
     await updateDoc(gameRef, {
-      currentTurn: getNextPlayerId(updatedPlayers, user.uid),
+      currentTurn: nextPlayerId,
       diceValue: 0,
     })
     
-    // toast.info("Turn passed to next player")
-  } catch (error) {
-    console.error("Error passing turn:", error)
-    toast.error("Failed to pass turn")
-  }
-}, [gameId, user?.uid]); 
-
-
-const handlePassTurn = useCallback((data) => {
-  if (data.playerId === currentPlayerId) {
-    passTurn();
-  }
-}, [currentPlayerId, passTurn]);
-
-const handlePawnMove = useCallback((data) => {
-  if (data.playerId !== user?.uid) {
-    setLastMoveTimestamp(data.timestamp);
+    // Update local state immediately
     setGameState(prev => ({
       ...prev,
-      players: processMove(prev.players, data.playerId, {
-        pawnId: data.pawnId,
-        newPosition: data.newPosition,
-        action: 'move'
-      })
-    }));
+      currentTurn: nextPlayerId,
+      diceValue: 0
+    }))
+    
+    // Emit socket event for other players
+    socket.emit('pass-turn', {
+      gameId,
+      playerId: user.uid,
+      fromPlayer: currentPlayer?.name || 'Current player',
+      toPlayer: nextPlayer?.name || 'Next player',
+      nextPlayerId: nextPlayerId,
+      timestamp: Date.now()
+    })
+    
+    // Show notification for local player
+    turnPassed(currentPlayer?.name || 'Current player', nextPlayer?.name || 'Next player')
+    
+  } catch (error) {
+    toast.error("Failed to pass turn")
   }
-}, [user?.uid]);
+}, [gameId, user?.uid, turnPassed, socket])
 
-const handleDiceRolled = useCallback((data) => {
+// Handle remote turn passes
+const handlePassTurn = useCallback((data) => {
+  // Only process remote turn passes (not our own)
+  
+  if (data.playerId !== user?.uid) {
+    // Update local state for remote turn pass
+    setGameState(prev => ({
+      ...prev,
+      currentTurn: data.nextPlayerId,
+      diceValue: 0
+    }))
+    
+    // Show notification for remote turn pass
+    turnPassed(data.fromPlayer, data.toPlayer)
+  }
+}, [user?.uid, turnPassed])
+
+const processPlayerMove = useCallback((players, playerId, pawnIndex, newPosition) => {
+  return players.map((player) => {
+    if (player.id !== playerId) return player;
+
+    const playerPawns = player.pawns || [
+      { position: 'home' }, { position: 'home' }, { position: 'home' }, { position: 'home' }
+    ];
+
+    const updatedPawns = playerPawns.map((pawn, index) => {
+      if (index === pawnIndex) {
+        return { ...pawn, position: newPosition };
+      }
+      return pawn;
+    });
+
+    return { ...player, pawns: updatedPawns };
+  });
+}, []);
+
+const processCaptures = useCallback((newPosition, movingPlayerColor, players, currentGameState, pawnCaptured) => {
+  let updatedPlayers = players;
+  let captureCount = 0;
+  let victimPlayer;
+
+  if (typeof newPosition === 'object' && !isSafeSquare(newPosition)) {
+    const captures = checkCaptures(newPosition, movingPlayerColor, updatedPlayers);
+    
+    if (captures.length > 0) {
+      captureCount = captures.length;
+      updatedPlayers = updatedPlayers.map(player => {
+        const playerCaptures = captures.filter(capture => capture.playerId === player.id);
+        if (playerCaptures.length === 0) return player;
+        
+        const updatedPlayerPawns = (player.pawns || []).map((pawn, index) => {
+          const wasCaptured = playerCaptures.some(capture => capture.pawnIndex === index);
+          return wasCaptured ? { ...pawn, position: 'home' } : pawn;
+        });
+        
+        return { ...player, pawns: updatedPlayerPawns };
+      });
+
+      // Notify about captures
+      const movingPlayer = currentGameState.players.find(p => p.color === movingPlayerColor);
+      captures.forEach(capture => {
+         victimPlayer = currentGameState.players.find(p => p.id === capture.playerId);
+        if (victimPlayer && movingPlayer) {
+          pawnCaptured(movingPlayer.name, victimPlayer.name, victimPlayer.color);
+        }
+      });
+    }
+  }
+  
+
+  return { updatedPlayers, captureCount, victimPlayer };
+}, []);
+
+const makeMove = useCallback(async (moveData) => {
+  if (!user || !socket) return false;
+
+  try {
+    let pawnIndex;
+    
+    // Parse pawn index from moveData
+    if (moveData.pawnId) {
+      const parts = moveData.pawnId.split('-');
+      if (parts.length === 2) {
+        pawnIndex = parseInt(parts[1]);
+      } else {
+        throw new Error('Invalid pawnId format: ' + moveData.pawnId);
+      }
+    } else if (moveData.pawnIndex !== undefined) {
+      pawnIndex = parseInt(moveData.pawnIndex);
+    } else {
+      throw new Error('Either pawnId or pawnIndex is required');
+    }
+    
+    if (isNaN(pawnIndex) || pawnIndex < 0 || pawnIndex > 3) {
+      throw new Error('Invalid pawn index: ' + pawnIndex);
+    }
+
+    const gameRef = doc(db, 'games', gameId);
+    const gameDoc = await getDoc(gameRef);
+    if (!gameDoc.exists()) throw new Error('Game not found');
+
+    const currentGameState = gameDoc.data();
+    if (currentGameState.currentTurn !== user.uid) {
+      throw new Error('Not your turn!');
+    }
+
+    const currentPlayer = currentGameState.players.find(p => p.id === user.uid);
+    if (!currentPlayer) throw new Error('Player not found in game');
+
+    // Ensure pawns array exists
+    const currentPawn = (currentPlayer.pawns || [
+      { position: 'home' }, { position: 'home' }, { position: 'home' }, { position: 'home' }
+    ])[pawnIndex] || { position: 'home' };
+
+    const currentPosition = currentPawn.position;
+
+    // Validate move
+    const validationResult = isValidMove(
+      currentPosition,
+      currentGameState.diceValue,
+      currentPlayer.color,
+      pawnIndex
+    );
+
+    if (!validationResult.isValid) {
+      throw new Error(validationResult.reason || 'Invalid move');
+    }
+
+    const newPosition = validationResult.newPos;
+
+    // Process the move
+    let updatedPlayers = processPlayerMove(
+      currentGameState.players, 
+      user.uid, 
+      pawnIndex, 
+      newPosition
+    );
+
+    // Process captures
+    const { updatedPlayers: playersAfterCaptures, captureCount, victimPlayer } = processCaptures(
+      newPosition,
+      currentPlayer.color,
+      updatedPlayers,
+      currentGameState,
+      pawnCaptured
+    );
+
+    updatedPlayers = playersAfterCaptures;
+
+    const hasWon = checkWinCondition(updatedPlayers, user.uid);
+
+    const updateData = {
+      players: updatedPlayers,
+      lastMove: {
+        playerId: user.uid,
+        action: 'move',
+        pawnIndex: pawnIndex,
+        newPosition: newPosition,
+        timestamp: serverTimestamp()
+      },
+      diceValue: 0, 
+    };
+
+    if (hasWon) {
+      updateData.status = 'finished';
+      updateData.winner = user.uid;
+      updateData.finishedAt = serverTimestamp();
+    }
+
+    await updateDoc(gameRef, updateData);
+
+    // Emit socket event for other players
+    socket.emit('pawn-move', {
+      gameId,
+      playerId: user.uid,
+      pawnIndex: pawnIndex,
+      newPosition: newPosition,
+      timestamp: Date.now(),
+      isWin: hasWon,
+      captureCount: captureCount,
+      victimPlayer,
+    });
+
+    // Update local state immediately
+    setGameState(prev => ({
+      ...prev,
+      players: updatedPlayers,
+      diceValue: 0,
+      ...(hasWon && { status: 'finished', winner: user.uid })
+    }));
+
+    // Notify about the move
+    pawnMoved(currentPlayer.name, currentPlayer.color, currentGameState.diceValue);
+
+    if (hasWon) {
+      toast.success('🎉 You won the game!');
+    } else if (captureCount > 0) {
+      toast.success(`Captured ${captureCount} opponent pieces!`);
+    }
+
+    // Pass turn if needed
+    if (!hasWon && currentGameState.diceValue !== 6) {
+      setTimeout(() => {
+        passTurn();
+      }, 3000);
+    }
+
+    return true;
+  } catch (err) {
+    toast.error(err.message || 'Move failed');
+    return false;
+  }
+}, [user, socket, gameId, pawnMoved, pawnCaptured, passTurn, processPlayerMove, processCaptures]);
+
+makeMoveRef.current = makeMove;
+
+const handleRemoteMove = async (data) => {
+  if (data.playerId === user?.uid) return;
+
+const {victimPlayer} = data
+
+  const movingPlayer = players.find(p => p.id === data.playerId);
+  if (movingPlayer) {
+    pawnMoved(movingPlayer.name, movingPlayer.color, 'some steps');
+  }
+  
+ if (victimPlayer) {
+  pawnCaptured(movingPlayer.name, victimPlayer.name, victimPlayer.color);
+ }
+
+};
+
+const processDiceRoll = useCallback((diceValue, playerId, isLocalRoll = false) => {
   setGameState(prev => ({
     ...prev,
-    diceValue: data.value,
+    diceValue: diceValue,
     lastAction: {
       type: 'dice_roll',
-      value: data.value,
-      playerId: data.playerId,
-      timestamp: new Date(data.timestamp)
+      value: diceValue,
+      playerId: playerId,
+      timestamp: isLocalRoll ? new Date() : new Date(Date.now())
     }
   }));
 
-  // Only check for auto-pass if it's the current player
-  if (data.playerId === currentPlayerId) {
+  // Notify about dice roll
+  const rollingPlayer = players.find(p => p.id === playerId);
+  if (rollingPlayer) {
+    diceRolled(rollingPlayer.name, diceValue, diceValue === 6);
+  }
+
+  // Check for auto-pass conditions
+  if (playerId === currentPlayerId) {
     const currentPlayer = players.find(p => p.id === currentPlayerId);
     if (currentPlayer) {
       const allAtHome = areAllPawnsAtHome(currentPlayer);
-      // Only auto-pass if all pawns are at home and didn't roll a 6
-      if (allAtHome && data.value !== 6) {
+      
+      if (allAtHome && diceValue !== 6) {
+        needSixToStart(currentPlayer.name);
+        
+        // Auto-pass after a delay
         setTimeout(() => {
           passTurn();
         }, 1000);
       }
     }
   }
-}, [currentPlayerId, players, passTurn]);
+}, [currentPlayerId, players, diceRolled, needSixToStart, passTurn]);
 
-const handleMoveError = useCallback((error) => {
-  console.log(error);
-  
+const handleDiceRolled = useCallback((data) => {
+  processDiceRoll(data.value, data.playerId, false);
+}, [processDiceRoll]);
+
+const handleMoveError = useCallback((error) => {  
   if (pendingMove?.pawnId === error.pawnId) {
     setPendingMove(null);
   }
@@ -161,7 +404,7 @@ const handlePlayerDisconnected = useCallback(({ playerId }) => {
 
     // Add all socket listeners
   socket.on('pass-turn', handlePassTurn);
-  socket.on('pawn-move', handlePawnMove);
+  socket.on('pawn-move', handleRemoteMove);  
   socket.on('dice-rolled', handleDiceRolled);
   socket.on('move-error', handleMoveError);
   socket.on('player-disconnected', handlePlayerDisconnected);
@@ -169,14 +412,20 @@ const handlePlayerDisconnected = useCallback(({ playerId }) => {
   return () => {
     // Remove all socket listeners
     socket.off('pass-turn', handlePassTurn);
-    socket.off('pawn-move', handlePawnMove);
+    socket.off('pawn-move', handleRemoteMove);
     socket.off('dice-rolled', handleDiceRolled);
     socket.off('move-error', handleMoveError);
     socket.off('player-disconnected', handlePlayerDisconnected);    
     socket.emit('leave-game', gameId);
   };
-  }, [socket, gameId, user?.uid, players, pendingMove, passTurn])
+  }, [socket, gameId, user?.uid, players, pendingMove])
 
+  // Add game started notification
+  useEffect(() => {
+    if (gameStatus === 'playing') {
+      gameStarted();
+    }
+  }, [gameStatus, gameStarted]);
 
   const joinGame = async () => {
   if (!user) {
@@ -219,22 +468,12 @@ const handlePlayerDisconnected = useCallback(({ playerId }) => {
         availableColor = playerColors.find((color) => !gameData.players.some((p) => p.color === color)) || playerColors[0];
       }
 
-      // const newPlayer = {
-      //   id: user.uid,
-      //   name: user.displayName || user.email.split('@')[0],
-      //   color: availableColor,
-      //   ready: false,
-      //   position: 0,
-      //   pawns: Array(4).fill({ position: 'home' }),
-      // }
-
       const newPlayer = {
     id: user.uid,
     name: user.displayName || user.email.split('@')[0],
     color: availableColor,
     ready: false,
     position: 0,
-    // ✅ ADD THIS: Initialize pawns array
     pawns: [
       { position: 'home' },
       { position: 'home' },
@@ -249,9 +488,9 @@ const handlePlayerDisconnected = useCallback(({ playerId }) => {
     })
 
     toast.success('Joined game successfully!')
+
     return true
   } catch (error) {
-    // console.error('Error joining game:', error)
 
     if (error.message.includes('already started')) {
       toast.error('Cannot join - game already started')
@@ -268,6 +507,7 @@ const handlePlayerDisconnected = useCallback(({ playerId }) => {
     return false
   }
 }
+
 const startGame = async () => {
   if (!user) {
     return false;
@@ -305,9 +545,9 @@ const startGame = async () => {
     });
 
     toast.success('Game started!');
+    
     return true;
   } catch (error) {
-    // console.error('Error starting game:', error);
     return false;
   }
 };
@@ -371,24 +611,10 @@ const leaveGame = async () => {
     toast.success('You have left the game');
     return true;
   } catch (error) {
-    // console.error('Error leaving game:', error);
     return false;
   }
 };
-  const processMove = (players, playerId, moveData) => {
-    return players.map((player) => {
-      if (player.id !== playerId) return player
 
-      const updatedPawns = player.pawns.map((pawn, index) => {
-        if (index === moveData.pawnIndex) {
-          return { ...pawn, position: moveData.newPosition }
-        }
-        return pawn
-      })
-
-      return { ...player, pawns: updatedPawns }
-    })
-  }
 
 const handleDiceRoll = useCallback(async (diceValue) => {
   if (!user || !socket || currentTurn !== user.uid) {
@@ -405,6 +631,7 @@ const handleDiceRoll = useCallback(async (diceValue) => {
     if (gameData.status !== 'playing') throw new Error("Game is not in playing state");
     if (gameData.currentTurn !== user.uid) throw new Error("Turn changed before roll completed");
 
+    // Update database
     const updateData = {
       diceValue: diceValue,
       lastAction: {
@@ -417,6 +644,7 @@ const handleDiceRoll = useCallback(async (diceValue) => {
 
     await updateDoc(gameRef, updateData);
 
+    // Emit socket event
     socket.emit('dice-rolled', {
       gameId,
       playerId: user.uid,
@@ -424,22 +652,16 @@ const handleDiceRoll = useCallback(async (diceValue) => {
       timestamp: Date.now()
     });
 
-    const currentPlayer = gameData.players.find(p => p.id === user.uid);
-    if (currentPlayer && areAllPawnsAtHome(currentPlayer) && diceValue !== 6) {
-      setTimeout(() => {
-        passTurn();
-      }, 1000);
-    }
+    // Process the dice roll locally
+    processDiceRoll(diceValue, user.uid, true);
 
   } catch (error) {
-    console.error("Dice roll error:", error);
     toast.error("Dice roll failed");
   }
-}, [user, socket, gameId, currentTurn, passTurn]);
+}, [user, socket, gameId, currentTurn, processDiceRoll]);
 
 const checkValidMoves = (pawns, diceValue) => {
     if (!Array.isArray(pawns)) {
-      console.error('Invalid pawns array:', pawns)
       return false
     }
 
@@ -453,166 +675,6 @@ const checkValidMoves = (pawns, diceValue) => {
       return true
     })
   }
-
-const makeMove = useCallback(async (moveData) => {
-  if (!user || !socket) return false;
-
-  try {
-    console.log('moveData received:', moveData);
-
-    let pawnIndex;
-    
-    if (moveData.pawnId) {
-      // Parse pawnId like "green-1", "red-2", etc.
-      const parts = moveData.pawnId.split('-');
-      if (parts.length === 2) {
-        pawnIndex = parseInt(parts[1]);
-      } else {
-        throw new Error('Invalid pawnId format: ' + moveData.pawnId);
-      }
-    } else if (moveData.pawnIndex !== undefined) {
-      // Use pawnIndex directly if provided
-      pawnIndex = parseInt(moveData.pawnIndex);
-    } else {
-      throw new Error('Either pawnId or pawnIndex is required');
-    }
-    
-    if (isNaN(pawnIndex) || pawnIndex < 0 || pawnIndex > 3) {
-      throw new Error('Invalid pawn index: ' + pawnIndex);
-    }
-
-    const gameRef = doc(db, 'games', gameId);
-    const gameDoc = await getDoc(gameRef);
-    if (!gameDoc.exists()) throw new Error('Game not found');
-
-    const currentGameState = gameDoc.data();
-    if (currentGameState.currentTurn !== user.uid) {
-      throw new Error('Not your turn!');
-    }
-
-    const currentPlayer = currentGameState.players.find(p => p.id === user.uid);
-    if (!currentPlayer) throw new Error('Player not found in game');
-    
-    // Ensure pawns array exists
-    if (!currentPlayer.pawns || !Array.isArray(currentPlayer.pawns)) {
-      currentPlayer.pawns = [
-        { position: 'home' },
-        { position: 'home' },
-        { position: 'home' },
-        { position: 'home' }
-      ];
-    }
-    
-    let currentPawn = currentPlayer.pawns[pawnIndex];
-    
-    // Ensure pawn object exists
-    if (!currentPawn) {
-      currentPlayer.pawns[pawnIndex] = { position: 'home' };
-      currentPawn = currentPlayer.pawns[pawnIndex];
-    }
-
-    const currentPosition = currentPawn.position;
-
-    // Calculate new position
-    const newPosition = calculateNewPosition(
-      currentPosition,
-      currentGameState.diceValue,
-      currentPlayer.color,
-      pawnIndex
-    );
-
-    // Validate move
-    const validationResult = isValidMove(
-      currentPosition,
-      newPosition,
-      currentGameState.diceValue,
-      currentPlayer.color,
-      pawnIndex
-    );
-
-    if (!validationResult.isValid) {
-      throw new Error(validationResult.reason || 'Invalid move');
-    }
-
-    // Update current pawn
-    const updatedPawns = [...currentPlayer.pawns];
-    updatedPawns[pawnIndex] = { ...currentPawn, position: newPosition };
-
-    let updatedPlayers = currentGameState.players.map(player => 
-      player.id === user.uid 
-        ? { ...player, pawns: updatedPawns } 
-        : player
-    );
-
-    // Handle captures (only if not on safe square)
-    if (typeof newPosition === 'object' && !isSafeSquare(newPosition)) {
-      const captures = checkCaptures(newPosition, currentPlayer.color, updatedPlayers);
-      
-      if (captures.length > 0) {
-        updatedPlayers = updatedPlayers.map(player => {
-          const playerCaptures = captures.filter(capture => capture.playerId === player.id);
-          if (playerCaptures.length === 0) return player;
-          
-          const updatedPlayerPawns = player.pawns.map((pawn, index) => {
-            const wasCaptured = playerCaptures.some(capture => capture.pawnIndex === index);
-            return wasCaptured ? { ...pawn, position: 'home' } : pawn;
-          });
-          
-          return { ...player, pawns: updatedPlayerPawns };
-        });
-      }
-    }
-
-    const hasWon = checkWinCondition(updatedPlayers, user.uid);
-
-    const updateData = {
-      players: updatedPlayers,
-      lastMove: {
-        playerId: user.uid,
-        action: 'move',
-        pawnIndex: pawnIndex,
-        newPosition: newPosition,
-        timestamp: serverTimestamp()
-      },
-      diceValue: 0, 
-    };
-
-    // Handle turn progression
-    if (!hasWon && currentGameState.diceValue !== 6) {
-  updateData.currentTurn = getNextPlayerId(updatedPlayers, user.uid);
-}
-
-if (hasWon) {
-  updateData.status = 'finished';
-  updateData.winner = user.uid;
-  updateData.finishedAt = serverTimestamp();
-}
-
-    await updateDoc(gameRef, updateData);
-
-    socket.emit('pawn-move', {
-      gameId,
-      playerId: user.uid,
-      pawnIndex: pawnIndex,
-      newPosition: newPosition,
-      timestamp: Date.now(),
-      isWin: hasWon,
-      nextTurn: updateData.currentTurn || user.uid 
-    });
-
-    if (hasWon) {
-      toast.success('🎉 You won the game!');
-    } else if (validationResult.captures && validationResult.captures.length > 0) {
-      toast.success(`Captured ${validationResult.captures.length} opponent pieces!`);
-    }
-
-    return true;
-  } catch (err) {
-    console.error('Move failed:', err);
-    toast.error(err.message || 'Move failed');
-    return false;
-  }
-}, [user, socket, gameId]);     
 
 return {
     gameState,
@@ -633,16 +695,5 @@ return {
     currentPlayer: players.find((p) => p.id === user?.uid),
     lastMoveTimestamp,
     pendingMove,
-// Test export function
-    testMode,
-    setTestMode,
-    loadTestState: (testKey) => loadTestState(testKey, {
-      setGameState,
-      setPlayers,
-      setGameStatus,
-      setCurrentTurn
-    }),
-    validateGameState: () => validateGameState(gameState)
-
   }
 }

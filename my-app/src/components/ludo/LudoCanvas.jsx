@@ -10,6 +10,7 @@ import { toast } from 'react-toastify'
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import Dice from './Dice'
+import GameStatusDisplay from '../GameStatusDisplay'
 
 export default function LudoCanvas({
   gameId,
@@ -20,7 +21,6 @@ export default function LudoCanvas({
   gameState,
   onPawnMove,
   onRollDice,
-  onPassTurn,
 }) {
   const { nodes, materials } = useGLTF('/ludo_board_games.glb')
   const ludoBoardRef = useRef()
@@ -29,6 +29,8 @@ export default function LudoCanvas({
   const [currentTurnName, setCurrentTurnName] = useState('')
   const [isRolling, setIsRolling] = useState(false)
   const [remoteRollingPlayer, setRemoteRollingPlayer] = useState(null)
+
+  
 
   useEffect(() => {
     if (gameState?.diceValue !== undefined) {
@@ -99,7 +101,6 @@ export default function LudoCanvas({
       setIsRolling(true)
       setLocalDiceValue(0)
     } catch (error) {
-      console.error('Failed to start dice roll:', error)
       toast.error('Failed to start dice roll')
     }
   }
@@ -132,7 +133,6 @@ export default function LudoCanvas({
 
       onRollDice(result)
     } catch (error) {
-      console.error('Failed to update dice value:', error)
       toast.error('Failed to update dice roll')
       setIsRolling(false)
     }
@@ -154,11 +154,11 @@ export default function LudoCanvas({
     )
   }
 
-  // const getRollingStatus = () => {
-  //   if (isRolling) return currentPlayerId !== currentTurn ? `${currentTurnName} is rolling...` : 'You are rolling...'
-  //   if (currentPlayerId !== currentTurn) return `${currentTurnName} is making move`
-  //   return null
-  // }
+  const getRollingStatus = () => {
+    if (isRolling) return currentPlayerId !== currentTurn ? `${currentTurnName} is rolling...` : 'You are rolling...'
+    if (currentPlayerId !== currentTurn) return `${currentTurnName} is making move`
+    return null
+  }
 
   const getButtonText = () => {
     if (isRolling) return 'Rolling...'
@@ -184,6 +184,7 @@ export default function LudoCanvas({
     <div className='relative w-full h-screen overflow-hidden flex items-center justify-center bg-gradient-to-br from-blue-900 to-purple-600'>
       <div className="absolute inset-0 bg-[url('/images/ludo-bg.jpg')] bg-cover bg-center opacity-10 blur-sm z-0 pointer-events-none" />
 
+
       <Canvas
         shadows
         // camera={{ position: [0, 25, 0], fov: 45, far: 1000 }}
@@ -204,7 +205,6 @@ export default function LudoCanvas({
           gameId={gameId}
           nodes={nodes}
           materials={materials}
-          onPassTurn={onPassTurn}
         />
 
         <Dice
@@ -231,6 +231,7 @@ export default function LudoCanvas({
             {getRollingStatus()}
           </div>
         )} */}
+        <GameStatusDisplay />
         <button
           onClick={handleRollDice}
           className={`px-8 py-3 rounded-full font-bold text-lg shadow-lg transition-all

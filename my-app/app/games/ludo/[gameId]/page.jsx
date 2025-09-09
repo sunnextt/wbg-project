@@ -23,7 +23,6 @@ export default function LudoGamePage() {
     currentPlayer,
     isLoading,
     error,
-    passTurn,
     handleDiceRoll,
   } = useLudoGameManager(gameId)
 
@@ -65,7 +64,6 @@ export default function LudoGamePage() {
               onRollDice={handleDiceRoll}
               gameState={gameState}
               onPawnMove={makeMove}
-              onPassTurn={passTurn} 
             />
 
             <GameControls

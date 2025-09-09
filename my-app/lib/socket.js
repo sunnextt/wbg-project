@@ -1,4 +1,3 @@
-// src/lib/socket.js
 'use client'
 import { io } from 'socket.io-client'
 import { useEffect, useState } from 'react'

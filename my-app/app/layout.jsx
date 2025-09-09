@@ -4,6 +4,8 @@ import Navbar from '@/src/components/Navbar'
 import { Layout } from '@/components/dom/Layout'
 import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
+import { FeedbackProvider } from '@/lib/FeedbackContext'
+import { GameStatusProvider } from '@/lib/GameStatusProvider'
 
 export const metadata = {
   title: 'Arcade Nexus',
@@ -15,21 +17,26 @@ export default function RootLayout({ children }) {
     <html lang='en' className='antialiased'>
       <body>
         <AuthProvider>
-          <Navbar />
-          <Layout>{children}</Layout>
-          <footer className='text-center text-sm py-4 border-t'>© 2025 Arcade Nexus. All rights reserved.</footer>
-          <ToastContainer
-            position='bottom-right'
-            autoClose={3000}
-            newestOnTop
-            closeOnClick
-            rtl={false}
-            pauseOnFocusLoss
-            draggable
-            pauseOnHover
-            theme='colored'
-            limit={1}
-          />
+          <FeedbackProvider>
+            <GameStatusProvider>
+
+              <Navbar />
+              <Layout>{children}</Layout>
+              <footer className='text-center text-sm py-4 border-t'>© 2025 Arcade Nexus. All rights reserved.</footer>
+              <ToastContainer
+                position='bottom-right'
+                autoClose={3000}
+                newestOnTop
+                closeOnClick
+                rtl={false}
+                pauseOnFocusLoss
+                draggable
+                pauseOnHover
+                theme='colored'
+                limit={1}
+                />
+                </GameStatusProvider>
+          </FeedbackProvider>
         </AuthProvider>
       </body>
     </html>
