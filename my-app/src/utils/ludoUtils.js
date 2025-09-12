@@ -351,3 +351,13 @@ export const handleAutoPassTurn = (player, diceValue, passTurnFunction, delay = 
   
   return false;
 };
+
+export  const getColorHex = (color) => {
+    const colorMap = {
+      red: '#ef4444',
+      blue: '#3b82f6', 
+      green: '#22c55e',
+      yellow: '#eab308'
+    };
+    return colorMap[color] || '#9ca3af';
+  };

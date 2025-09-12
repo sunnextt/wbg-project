@@ -11,6 +11,8 @@ import { doc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import Dice from './Dice'
 import GameStatusDisplay from '../GameStatusDisplay'
+import { getColorHex } from '@/src/utils/ludoUtils'
+import GameChat from '../gameChat/GameChat'
 
 export default function LudoCanvas({
   gameId,
@@ -29,8 +31,6 @@ export default function LudoCanvas({
   const [currentTurnName, setCurrentTurnName] = useState('')
   const [isRolling, setIsRolling] = useState(false)
   const [remoteRollingPlayer, setRemoteRollingPlayer] = useState(null)
-
-  
 
   useEffect(() => {
     if (gameState?.diceValue !== undefined) {
@@ -154,11 +154,11 @@ export default function LudoCanvas({
     )
   }
 
-  const getRollingStatus = () => {
-    if (isRolling) return currentPlayerId !== currentTurn ? `${currentTurnName} is rolling...` : 'You are rolling...'
-    if (currentPlayerId !== currentTurn) return `${currentTurnName} is making move`
-    return null
-  }
+  // const getRollingStatus = () => {
+  //   if (isRolling) return currentPlayerId !== currentTurn ? `${currentTurnName} is rolling...` : 'You are rolling...'
+  //   if (currentPlayerId !== currentTurn) return `${currentTurnName} is making move`
+  //   return null
+  // }
 
   const getButtonText = () => {
     if (isRolling) return 'Rolling...'
@@ -183,7 +183,6 @@ export default function LudoCanvas({
   return (
     <div className='relative w-full h-screen overflow-hidden flex items-center justify-center bg-gradient-to-br from-blue-900 to-purple-600'>
       <div className="absolute inset-0 bg-[url('/images/ludo-bg.jpg')] bg-cover bg-center opacity-10 blur-sm z-0 pointer-events-none" />
-
 
       <Canvas
         shadows
@@ -225,16 +224,15 @@ export default function LudoCanvas({
       </Canvas>
 
       {/* Game UI Controls */}
+
+      <GameStatusDisplay />
+      <GameChat gameId={gameId} players={players} />
+
+
       <div className='absolute bottom-8 left-0 right-0 flex flex-col items-center gap-2'>
-        {/* {gameStatus == 'playing' && getRollingStatus() && (
-          <div className='text-white text-lg font-semibold bg-black bg-opacity-70 px-4 py-2 rounded-full'>
-            {getRollingStatus()}
-          </div>
-        )} */}
-        <GameStatusDisplay />
         <button
           onClick={handleRollDice}
-          className={`px-8 py-3 rounded-full font-bold text-lg shadow-lg transition-all
+          className={`px-6 py-2 rounded-full font-bold text-base shadow-lg transition-all md:px-8 md:py-2 md:text-lg
             ${
               canRollDice()
                 ? 'bg-yellow-400 hover:bg-yellow-500 text-black'
@@ -251,6 +249,35 @@ export default function LudoCanvas({
       {(gameState?.diceValue || localDiceValue > 0) && (
         <div className='absolute top-4 right-4 bg-black bg-opacity-70 text-white p-3 rounded-lg z-10'>
           Dice: {gameState?.diceValue || localDiceValue}
+        </div>
+      )}
+
+      {/* Player Color Indicators */}
+      {gameStatus === 'playing' && (
+        <div className='absolute md:absolute md:top-20 md:bottom-auto left-4 bg-black bg-opacity-70 text-white p-4 rounded-lg z-20 absolute bottom-2 top-auto'>
+          <h3 className='text-lg font-bold mb-2'>Player Colors</h3>
+          <div className='space-y-2'>
+            {players.map((player) => (
+              <div
+                key={player.id}
+                className={`flex items-center space-x-2 p-2 rounded ${
+                  player.id === currentPlayerId ? 'bg-gray-700' : ''
+                }`}
+              >
+                <div
+                  className='w-4 h-4 rounded-full border-2 border-white'
+                  style={{
+                    backgroundColor: getColorHex(player.color),
+                    boxShadow: player.id === currentTurn ? '0 0 8px 2px white' : 'none',
+                  }}
+                />
+                <span className='text-sm'>
+                  {player.name} {player.id === currentPlayerId && '(You)'}
+                  {player.id === currentTurn && ' 🎯'}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

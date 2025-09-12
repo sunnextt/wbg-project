@@ -46,7 +46,6 @@ io.use(async (socket, next) => {
 
 io.on("connection", (socket) => {
   const uid = socket.userId;
-  console.log(`User connected: ${uid}`);
 
   if (uid) {
     onlineUsers.set(uid, socket.id);
@@ -85,14 +84,29 @@ io.on("connection", (socket) => {
     socket.on("pass-turn", async (data) => {
       try {
         const { gameId } = data;
-        
         socket.to(gameId).emit("pass-turn", {
           ...data,
           timestamp: Date.now(),
         });
       } catch (error) {
-        console.error("Turn pass failed:", error);
         socket.emit("pass-turn-error", {
+          message: error.message,
+        });
+      }
+    });
+
+    socket.on("dice-rolled", async (data) => {
+
+      console.log("@@@@@@@@@@@@@@##", data);
+      
+      try {
+        const { gameId } = data;
+        socket.to(gameId).emit("dice-rolled", {
+          ...data,
+          timestamp: Date.now(),
+        });
+      } catch (error) {
+        socket.emit("dice-rolled-error", {
           message: error.message,
         });
       }
@@ -133,7 +147,6 @@ io.on("connection", (socket) => {
 
         // Optional: Update Firebase here if you want server to be authoritative
       } catch (error) {
-        console.error("Move validation failed:", error);
         socket.emit("move-error", {
           message: error.message,
           pawnId: data.pawnId,
@@ -143,8 +156,6 @@ io.on("connection", (socket) => {
 
     socket.on("pawn-dragging", (data) => {
       const { gameId, pawnId, newPosition } = data;
-
-      console.log("gameId one", gameId);
 
       // Broadcast to everyone in the same game room except sender
       socket.to(gameId).emit("pawn-dragging", {
@@ -156,34 +167,33 @@ io.on("connection", (socket) => {
       });
     });
 
-    socket.on("dice-roll", async (data) => {
-      try {
-        const { gameId, value } = data;
+socket.on("chat-message", async (data) => {
+  try {
+    const { gameId, senderId, senderName, text } = data;
 
-        // Validate the dice roll
-        const gameRef = admin.firestore().doc(`games/${gameId}`);
-        const gameDoc = await gameRef.get();
-
-        if (!gameDoc.exists) throw new Error("Game not found");
-        if (gameDoc.data().status !== "playing")
-          throw new Error("Game not in progress");
-        if (gameDoc.data().currentTurn !== uid)
-          throw new Error("Not your turn");
-
-        // Broadcast to all players
-        io.to(gameId).emit("dice-rolled", {
-          gameId,
-          playerId: uid,
-          value,
-          timestamp: Date.now(),
-        });
-      } catch (error) {
-        console.error("Dice roll failed:", error);
-        socket.emit("dice-error", {
-          message: error.message,
-        });
-      }
+    // Save to Firestore so it's persistent
+    const chatRef = admin.firestore().collection("games").doc(gameId).collection("chat");
+    await chatRef.add({
+      senderId,
+      senderName,
+      text,
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
     });
+
+    // Broadcast to everyone in the same game room instantly
+    io.to(gameId).emit("chat-message", {
+      gameId,
+      senderId,
+      senderName,
+      text,
+      timestamp: Date.now(),
+    });
+  } catch (error) {
+    console.error("Chat error:", error);
+    socket.emit("chat-error", { message: error.message });
+  }
+});
+
 
     socket.on("privateMessage", ({ to, message }) => {
       const recipientSocketId = onlineUsers.get(to);

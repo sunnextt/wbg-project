@@ -11,46 +11,87 @@ export const GameStatusProvider = ({ children }) => {
   const addGameEvent = useCallback((text, duration = 3000) => {
     const id = Date.now() + Math.random()
     const newEvent = { id, text, duration }
-    
-    setEvents(prev => [newEvent, ...prev.slice(0, 4)])
-    
+
+    setEvents((prev) => [newEvent, ...prev.slice(0, 4)])
+
     setTimeout(() => {
-      setEvents(prev => prev.filter(event => event.id !== id))
+      setEvents((prev) => prev.filter((event) => event.id !== id))
     }, duration)
   }, [])
 
-const diceRolled = useCallback((playerName, value, isSix = false) => {
-  if (isSix) {
-    const text = `${playerName} rolled a 6! Extra turn! 🎉`
-    addGameEvent(text, 4000)
-  }
-}, [addGameEvent])
+  const diceRolled = useCallback(
+    (playerName, value, isSix = false, isCurrentUser = false) => {
+      const playerText = isCurrentUser ? 'You' : playerName
 
-  const noValidMoves = useCallback((playerName) => {
-    const text = `${playerName} has no valid moves. Passing turn.`
-    addGameEvent(text, 9000)
-    toast.info('No valid moves available')
-  }, [addGameEvent])
+      if (isSix) {
+        if (!isCurrentUser) {
+          const text = `${playerText} rolled a 6! Extra turn! 😁`
+          addGameEvent(text, 4000)
+        } else {
+          const text = `${playerText} rolled a ${value}! He get Extra turn😤`
+          addGameEvent(text, 3000)
+        }
+      }
+    },
+    [addGameEvent],
+  )
 
-  const needSixToStart = useCallback((playerName) => {
-    const text = `${playerName} needs to roll a 6 to bring pawn out`
-    addGameEvent(text, 9000)
-  }, [addGameEvent])
+  const noValidMoves = useCallback(
+    (playerName, isCurrentUser = false) => {
+      const playerText = isCurrentUser ? 'You have' : `${playerName} has`
+      const text = `${playerText} no valid moves. Passing turn.`
+      addGameEvent(text, 9000)
+      toast.info('No valid moves available')
+    },
+    [addGameEvent],
+  )
 
-  const turnPassed = useCallback((fromPlayer, toPlayer) => {    
-    const text = `Turn passed from ${fromPlayer} to ${toPlayer}`
-    addGameEvent(text, 9000)
-  }, [addGameEvent])
+  const needSixToStart = useCallback(
+    (playerName, isCurrentUser = false) => {
+      const playerText = isCurrentUser ? 'You need' : `${playerName} needs`
+      const text = `${playerText} to roll a 6 to bring a pawn out`
+      addGameEvent(text, 9000)
+    },
+    [addGameEvent],
+  )
 
-  const pawnMoved = useCallback((playerName, pawnColor, steps) => {
-    const text = `${playerName} moved ${pawnColor} pawn ${steps} steps`
-    addGameEvent(text, 9000)
-  }, [addGameEvent])
+  const turnPassed = useCallback(
+    (fromPlayer, toPlayer, context = 'other') => {
+      if (context === 'you_passing') {
+        const text = `You passed turn to ${toPlayer}`
+        addGameEvent(text, 9000)
+      } else if (context === 'passed_to_you') {
+        const text = `${fromPlayer} passed turn to you`
+        addGameEvent(text, 9000)
+      } else {
+        const text = `${fromPlayer} passed turn to ${toPlayer}`
+        addGameEvent(text, 9000)
+      }
+    },
+    [addGameEvent],
+  )
 
-  const pawnCaptured = useCallback((attacker, victim, pawnColor) => {
-    const text = `${attacker} captured ${victim}'s ${pawnColor} pawn and sent back to home`
-    addGameEvent(text, 4000)
-  }, [addGameEvent])
+  const pawnMoved = useCallback(
+    (playerName, pawnColor, steps, isCurrentUser = false) => {
+      const playerText = isCurrentUser ? 'You moved' : `${playerName} moved`
+      const text = `${playerText} ${pawnColor} pawn ${steps} steps`
+      addGameEvent(text, 9000)
+    },
+    [addGameEvent],
+  )
+
+  const pawnCaptured = useCallback(
+    (attacker, victim, pawnColor, isCurrentUser = false) => {
+      if (isCurrentUser) {
+        const text = `You captured ${victim}'s ${pawnColor} pawn!`
+        addGameEvent(text, 4000)
+      } else {
+        const text = `${attacker} captured ${victim}'s ${pawnColor} pawn!`
+        addGameEvent(text, 4000)
+      }
+    },
+    [addGameEvent],
+  )
 
   const gameStarted = useCallback(() => {
     const text = 'Game started! First player rolls the dice'
@@ -58,17 +99,19 @@ const diceRolled = useCallback((playerName, value, isSix = false) => {
   }, [addGameEvent])
 
   return (
-    <GameStatusContext.Provider value={{
-      events,
-      addGameEvent,
-      diceRolled,
-      noValidMoves,
-      needSixToStart,
-      turnPassed,
-      pawnMoved,
-      pawnCaptured,
-      gameStarted
-    }}>
+    <GameStatusContext.Provider
+      value={{
+        events,
+        addGameEvent,
+        diceRolled,
+        noValidMoves,
+        needSixToStart,
+        turnPassed,
+        pawnMoved,
+        pawnCaptured,
+        gameStarted,
+      }}
+    >
       {children}
     </GameStatusContext.Provider>
   )

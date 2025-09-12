@@ -2,13 +2,16 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { X, Send, ChevronDown, ChevronUp } from 'lucide-react'
-import { io } from 'socket.io-client'
 import { useAuth } from '@/lib/AuthContext'
 import { motion, AnimatePresence } from 'framer-motion'
 import axios from 'axios'
+import { useSocket } from '@/lib/socket'
 
 export default function SidebarUsers() {
   const { user, token, loading: authLoading } = useAuth()
+  const socket = useSocket() 
+  const [socketConnected, setSocketConnected] = useState(false)
+
   const [onlineUsers, setOnlineUsers] = useState([])
   const [openChats, setOpenChats] = useState([])
   const [minimizedChats, setMinimizedChats] = useState([])
@@ -16,94 +19,71 @@ export default function SidebarUsers() {
   const [broadcastMessages, setBroadcastMessages] = useState([])
   const [messageInput, setMessageInput] = useState({})
   const [showBroadcastChat, setShowBroadcastChat] = useState(false)
-  const [socketConnected, setSocketConnected] = useState(false)
   const [authError, setAuthError] = useState(null)
-  const socketRef = useRef(null)
+
   const messagesEndRef = useRef({})
 
   useEffect(() => {
-    if (!user || !token) return
+    if (!socket || !user) return
 
-    // Initialize socket connection with proper authentication
-    const socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000', {
-      auth: {
-        token: token // Send the Firebase auth token
-      },
-      query: {
-        uid: user.uid // Still include UID in query for legacy support if needed
-      },
-      transports: ['websocket'],
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-    })
-
-    socketRef.current = socket
-
-    // Connection established
-    socket.on('connect', () => {
-      console.log('Socket connected')
+    const handleConnect = () => {
       setSocketConnected(true)
       setAuthError(null)
-    })
+    }
 
-    // Connection error
-    socket.on('connect_error', (err) => {
-      console.error('Socket connection error:', err)
+    const handleDisconnect = (reason) => {
       setSocketConnected(false)
-      
-      // Specific handling for authentication errors
-      if (err.message.includes('Authentication error') || err.message.includes('Unauthorized')) {
+      console.log('Socket disconnected:', reason)
+    }
+
+    const handleError = (err) => {
+      console.error('Socket error:', err)
+      if (err.message?.includes('Authentication')) {
         setAuthError('Authentication failed. Please refresh the page.')
       }
-    })
+    }
 
-    // Disconnected
-    socket.on('disconnect', (reason) => {
-      console.log('Socket disconnected:', reason)
-      setSocketConnected(false)
-    })
+    const handleOnlineUsers = (userIds) => fetchUserDetails(userIds)
 
-    // Online users update
-    socket.on('onlineUsers', (userIds) => {
-      fetchUserDetails(userIds)
-    })
-
-    // Private messages
-    socket.on('privateMessage', ({ from, message, timestamp }) => {
+    const handlePrivateMessage = ({ from, message, timestamp }) => {
       setMessages((prev) => ({
         ...prev,
         [from]: [...(prev[from] || []), { from, message, timestamp }],
       }))
-    })
+    }
 
-    // Broadcast messages
-    socket.on('broadcastMessage', ({ from, username, message, timestamp }) => {
+    const handleBroadcastMessage = ({ from, username, message, timestamp }) => {
       setBroadcastMessages((prev) => [...prev, { from, username, message, timestamp }])
-    })
+    }
+
+    socket.on('connect', handleConnect)
+    socket.on('disconnect', handleDisconnect)
+    socket.on('connect_error', handleError)
+    socket.on('onlineUsers', handleOnlineUsers)
+    socket.on('privateMessage', handlePrivateMessage)
+    socket.on('broadcastMessage', handleBroadcastMessage)
 
     return () => {
-      if (socketRef.current) {
-        socketRef.current.off('connect')
-        socketRef.current.off('connect_error')
-        socketRef.current.off('disconnect')
-        socketRef.current.off('onlineUsers')
-        socketRef.current.off('privateMessage')
-        socketRef.current.off('broadcastMessage')
-        socketRef.current.disconnect()
-      }
+      socket.off('connect', handleConnect)
+      socket.off('disconnect', handleDisconnect)
+      socket.off('connect_error', handleError)
+      socket.off('onlineUsers', handleOnlineUsers)
+      socket.off('privateMessage', handlePrivateMessage)
+      socket.off('broadcastMessage', handleBroadcastMessage)
     }
-  }, [user, token])
+  }, [socket, user])
 
   const fetchUserDetails = async (userIds) => {
+    if (!token) return
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
-      const promises = userIds.map((uid) =>
-        axios.get(`${apiUrl}/api/users/${uid}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
+      const responses = await Promise.all(
+        userIds.map((uid) =>
+          axios.get(`${apiUrl}/api/users/${uid}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+        )
       )
-      const responses = await Promise.all(promises)
       const users = responses.map((res) => ({
         id: res.data.uid,
         username: res.data.username || 'Unknown',
@@ -112,6 +92,39 @@ export default function SidebarUsers() {
       setOnlineUsers(users.filter((u) => u.id !== user?.uid))
     } catch (err) {
       console.error('Failed to fetch user details:', err)
+    }
+  }
+
+  const sendPrivateMessage = (targetUserId, e) => {
+    e.preventDefault()
+    const message = messageInput[targetUserId]?.trim()
+    if (message && socket) {
+      socket.emit('privateMessage', { to: targetUserId, message })
+      setMessages((prev) => ({
+        ...prev,
+        [targetUserId]: [
+          ...(prev[targetUserId] || []),
+          { from: user.uid, message, timestamp: new Date() },
+        ],
+      }))
+      setMessageInput((prev) => ({ ...prev, [targetUserId]: '' }))
+    }
+  }
+
+  const sendBroadcastMessage = (e) => {
+    e.preventDefault()
+    const message = messageInput['broadcast']?.trim()
+    if (message && socket) {
+      socket.emit('broadcastMessage', {
+        from: user.uid,
+        username: user.displayName || user.email.split('@')[0] || 'You',
+        message,
+      })
+      setBroadcastMessages((prev) => [
+        ...prev,
+        { from: user.uid, username: user.displayName || 'You', message, timestamp: new Date() },
+      ])
+      setMessageInput((prev) => ({ ...prev, broadcast: '' }))
     }
   }
 
@@ -144,43 +157,6 @@ export default function SidebarUsers() {
     setMinimizedChats((prev) => (prev.includes(id) ? prev.filter((chatId) => chatId !== id) : [...prev, id]))
   }
 
-  const sendPrivateMessage = (targetUserId, e) => {
-    e.preventDefault()
-    const message = messageInput[targetUserId]?.trim()
-    if (message && socketRef.current) {
-      socketRef.current.emit('privateMessage', {
-        to: targetUserId,
-        message,
-      })
-      setMessages((prev) => ({
-        ...prev,
-        [targetUserId]: [...(prev[targetUserId] || []), { from: user.uid, message, timestamp: new Date() }],
-      }))
-      setMessageInput((prev) => ({ ...prev, [targetUserId]: '' }))
-    }
-  }
-
-  const sendBroadcastMessage = (e) => {
-    e.preventDefault()
-    const message = messageInput['broadcast']?.trim()
-    if (message && socketRef.current) {
-      socketRef.current.emit('broadcastMessage', {
-        from: user.uid,
-        username: user.displayName || user.email.split('@')[0] || 'You',
-        message,
-      })
-      setBroadcastMessages((prev) => [
-        ...prev,
-        {
-          from: user.uid,
-          username: user.displayName || user.email.split('@')[0] || 'You',
-          message,
-          timestamp: new Date(),
-        },
-      ])
-      setMessageInput((prev) => ({ ...prev, broadcast: '' }))
-    }
-  }
 
   if (authLoading || !user) return null
 
