@@ -96,8 +96,6 @@ io.on("connection", (socket) => {
     });
 
     socket.on("dice-rolled", async (data) => {
-
-      console.log("@@@@@@@@@@@@@@##", data);
       
       try {
         const { gameId } = data;

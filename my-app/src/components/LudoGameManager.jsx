@@ -118,7 +118,6 @@ export default function useLudoGameManager(gameId) {
     }
   }, [gameId, user?.uid, turnPassed, socket])
 
-  // Handle remote turn passes
   const handlePassTurn = useCallback(
     (data) => {
       if (data.playerId !== user?.uid) {
@@ -255,10 +254,10 @@ export default function useLudoGameManager(gameId) {
   }, [socket, gameId, user?.uid, players, pendingMove])
 
   useEffect(() => {
-    if (gameState?.diceValue === 0 ) {
-       if (gameStatus === 'playing') {
-      gameStarted()
-    }
+    if (gameState?.diceValue === 0) {
+      if (gameStatus === 'playing') {
+        gameStarted()
+      }
     }
   }, [gameStatus, gameStarted])
 
@@ -376,7 +375,7 @@ export default function useLudoGameManager(gameId) {
         )
 
         if (!validationResult.isValid) {
-          throw new Error(validationResult.reason || 'Invalid move')
+          // throw new Error(validationResult.reason || 'Invalid move')
         }
 
         const newPosition = validationResult.newPos
@@ -447,7 +446,7 @@ export default function useLudoGameManager(gameId) {
         if (!hasWon && currentGameState.diceValue !== 6) {
           setTimeout(() => {
             passTurn()
-          }, 3000)
+          }, 1000)
         }
 
         return true

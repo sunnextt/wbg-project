@@ -50,7 +50,7 @@ export const GameStatusProvider = ({ children }) => {
     (playerName, isCurrentUser = false) => {
       const playerText = isCurrentUser ? 'You need' : `${playerName} needs`
       const text = `${playerText} to roll a 6 to bring a pawn out`
-      addGameEvent(text, 9000)
+      addGameEvent(text, 3000)
     },
     [addGameEvent],
   )
@@ -59,13 +59,13 @@ export const GameStatusProvider = ({ children }) => {
     (fromPlayer, toPlayer, context = 'other') => {
       if (context === 'you_passing') {
         const text = `You passed turn to ${toPlayer}`
-        addGameEvent(text, 9000)
+        addGameEvent(text, 3000)
       } else if (context === 'passed_to_you') {
         const text = `${fromPlayer} passed turn to you`
-        addGameEvent(text, 9000)
+        addGameEvent(text, 3000)
       } else {
         const text = `${fromPlayer} passed turn to ${toPlayer}`
-        addGameEvent(text, 9000)
+        addGameEvent(text, 3000)
       }
     },
     [addGameEvent],
@@ -75,7 +75,7 @@ export const GameStatusProvider = ({ children }) => {
     (playerName, pawnColor, steps, isCurrentUser = false) => {
       const playerText = isCurrentUser ? 'You moved' : `${playerName} moved`
       const text = `${playerText} ${pawnColor} pawn ${steps} steps`
-      addGameEvent(text, 9000)
+      addGameEvent(text, 4000)
     },
     [addGameEvent],
   )

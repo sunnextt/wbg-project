@@ -328,7 +328,7 @@ export const showInvalidMoveFeedback = (object) => {
 };
 
 // Auto-pass turn if no valid moves
-export const handleAutoPassTurn = (player, diceValue, passTurnFunction, delay = 3000) => {
+export const handleAutoPassTurn = (player, diceValue, passTurnFunction, delay = 2000) => {
   const hasValidMoves = checkIfPlayerHasValidMoves(player, diceValue);
   const allAtHome = areAllPawnsAtHome(player);
   
