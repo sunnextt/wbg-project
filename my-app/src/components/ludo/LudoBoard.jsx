@@ -8,20 +8,26 @@ import {
   isCurrentPlayerPawn,
   getPlayerColorFromPawnId,
   getPawnIndexFromPawnId,
+  handleAutoPassTurn,
 } from '../../utils/ludoUtils'
 
 import { animatePawnMove, getPathPositions, calculatePawnOffsets } from '../../utils/pawnAnimation'
+import { useGameStatus } from '@/lib/GameStatusProvider'
+
 
 extend({ DragControls })
 
 const LudoBoard = forwardRef((props, ref) => {
-  const { nodes, materials, gameState, currentPlayerId, onPawnMove, players, socket, gameId } = props
+  const { nodes, materials, gameState, currentPlayerId, onPawnMove,passTurn, players, socket, gameId } = props
 
   const { camera, gl } = useThree()
   const groupRef = useRef()
   const diceRef = useRef()
   const controlsRef = useRef()
   const [animatingPawns, setAnimatingPawns] = useState(new Set())
+
+  const { noValidMoves } = useGameStatus()
+
 
   useImperativeHandle(ref, () => ({
     diceRef: diceRef.current,
@@ -168,139 +174,159 @@ const LudoBoard = forwardRef((props, ref) => {
     }
   }, [gameState])
 
-  // try to move a pawn with animation
-  // const attemptPawnMove = (pawnId) => {
-  //   const playerColor = getPlayerColorFromPawnId(pawnId);
-  //   const playerPawnIndex = getPawnIndexFromPawnId(pawnId);
 
-  //   const currentPlayer = players?.find((p) => p.id === currentPlayerId);
-  //   if (!currentPlayer) return false;
+//   useEffect(() => {
+//   let timeoutId = null;
 
-  //   const currentPawnState = currentPlayer.pawns[playerPawnIndex];
-  //   const validationResult = isValidMove(
-  //     currentPawnState.position,
-  //     gameState.diceValue,
-  //     playerColor,
-  //     playerPawnIndex
-  //   );
+//   if (gameState?.currentTurn === currentPlayerId && 
+//       gameState?.diceValue > 0 && 
+//       players && 
+//       animatingPawns.size === 0) {
+    
+//     const currentPlayer = players.find(p => p.id === currentPlayerId);
+//     if (currentPlayer) {
+//       timeoutId = setTimeout(async () => {
 
-  //   if (!validationResult.isValid) return false;
+//                   // Wait a bit so the user can see the message
+//           await new Promise(resolve => setTimeout(resolve, 2000));
 
-  //   const newPosition = validationResult.newPos;
-  //   const pawnRef = pawnRefs.current[pawnId - 1];
-  //   if (!pawnRef) return false;
+//     noValidMoves(currentPlayer.name, true)
 
-  //   // Get current visual position
-  //   const startPos = {
-  //     x: pawnRef.position.x,
-  //     y: pawnRef.position.y,
-  //     z: pawnRef.position.z
-  //   };
+//         handleAutoPassTurn(
+//           currentPlayer,
+//           gameState.diceValue,
+//           passTurn,
+//           2000
+//         );
+//       }, 1000); 
+//     }
+//   }
 
-  //   // Calculate end position
-  //   let endPos;
-  //   if (typeof newPosition === 'object') {
-  //     endPos = newPosition;
-  //   } else if (newPosition === 'home') {
-  //     const homePos = initialPawns[pawnId - 1].pos;
-  //     endPos = { x: homePos[0], y: homePos[1], z: homePos[2] };
-  //   } else if (newPosition === 'finish') {
-  //     const finishPos = getFinishPosition(playerColor, playerPawnIndex);
-  //     endPos = { x: finishPos.x, y: finishPos.y, z: finishPos.z };
-  //   } else {
-  //     return false;
-  //   }
+//   return () => {
+//     if (timeoutId) {
+//       clearTimeout(timeoutId);
+//     }
+//   };
+// }, [gameState, currentPlayerId, players, animatingPawns, onPawnMove]);
 
-  //   // Get the proper path for jogging animation
-  //   const path = getPathPositions(
-  //     startPos,
-  //     endPos,
-  //     gameState.diceValue,
-  //     playerColor,
-  //     currentPawnState.position
-  //   );
 
-  //   console.log('Animation path:', path);
+// Auto-pass turn if no valid moves
+useEffect(() => {
+  let timeoutId = null;
 
-  //   // Start animation
-  //   setAnimatingPawns(prev => new Set(prev).add(pawnId));
+  if (gameState?.currentTurn === currentPlayerId && 
+      gameState?.diceValue > 0 && 
+      players && 
+      animatingPawns.size === 0) {
+    
+    const currentPlayer = players.find(p => p.id === currentPlayerId);
+    if (currentPlayer) {
+      timeoutId = setTimeout(() => {
+        handleAutoPassTurn(
+          currentPlayer,
+          gameState.diceValue,
+          passTurn,
+          noValidMoves,
+          2000
+        );
+      }, 1000); 
+    }
+  }
 
-  //   animatePawnMove(
-  //     pawnRef,
-  //     path,
-  //     () => {
-  //       setAnimatingPawns(prev => {
-  //         const newSet = new Set(prev);
-  //         newSet.delete(pawnId);
-  //         return newSet;
-  //       });
-
-  //       if (onPawnMove) {
-  //         onPawnMove({
-  //           playerId: currentPlayerId,
-  //           color: playerColor,
-  //           pawnIndex: playerPawnIndex,
-  //           newPosition
-  //         });
-  //       }
-  //     },
-  //     300 // step duration - adjust for faster/slower animation
-  //   );
-
-  //   return true;
-  // };
+  return () => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  };
+}, [
+  gameState, 
+  currentPlayerId, 
+  players, 
+  animatingPawns, 
+  onPawnMove,
+  noValidMoves,
+  passTurn, 
+]);
 
   const attemptPawnMove = (pawnId) => {
-    const playerColor = getPlayerColorFromPawnId(pawnId)
-    const playerPawnIndex = getPawnIndexFromPawnId(pawnId)
+  const playerColor = getPlayerColorFromPawnId(pawnId);
+  const playerPawnIndex = getPawnIndexFromPawnId(pawnId);
 
-    const currentPlayer = players?.find((p) => p.id === currentPlayerId)
-    if (!currentPlayer) return false
+  const currentPlayer = players?.find((p) => p.id === currentPlayerId);
+  if (!currentPlayer) return false;
 
-    const currentPawnState = currentPlayer.pawns[playerPawnIndex]
-    const validationResult = isValidMove(currentPawnState.position, gameState.diceValue, playerColor, playerPawnIndex)
+  const currentPawnState = currentPlayer.pawns[playerPawnIndex];
+  const validationResult = isValidMove(
+    currentPawnState.position,
+    gameState.diceValue,
+    playerColor,
+    playerPawnIndex
+  );
 
-    if (!validationResult.isValid) return false
+  if (!validationResult.isValid) return false;
 
-    const newPosition = validationResult.newPos
-    const pawnRef = pawnRefs.current[pawnId - 1]
-    if (!pawnRef) return false
+  const newPosition = validationResult.newPos;
+  const pawnRef = pawnRefs.current[pawnId - 1];
+  if (!pawnRef) return false;
 
-    // Get current visual position from the mesh, not from state
-    const startPos = {
-      x: pawnRef.position.x,
-      y: pawnRef.position.y,
-      z: pawnRef.position.z,
+  // Get current visual position from the mesh, not from state
+  const startPos = {
+    x: pawnRef.position.x,
+    y: pawnRef.position.y,
+    z: pawnRef.position.z,
+  };
+
+  // Calculate the exact final position
+  let finalPos;
+  if (typeof newPosition === 'object') {
+    finalPos = newPosition;
+  } else if (newPosition === 'home') {
+    const homePos = initialPawns[pawnId - 1].pos;
+    finalPos = { x: homePos[0], y: homePos[1], z: homePos[2] };
+  } else if (newPosition === 'finish') {
+    const finishPos = getFinishPosition(playerColor, playerPawnIndex);
+    finalPos = { x: finishPos.x, y: finishPos.y, z: finishPos.z };
+  } else {
+    return false;
+  }
+
+  // Get the precise path for animation - ADD pawnIndex parameter
+  const path = getPathPositions(
+    startPos,
+    finalPos,
+    gameState.diceValue,
+    playerColor,
+    currentPawnState.position,
+    playerPawnIndex // This is the missing parameter
+  );
+
+  if (path.length === 0) {
+    // No animation needed, just update position
+    pawnRef.position.set(finalPos.x, finalPos.y || 0.253, finalPos.z);
+
+    if (onPawnMove) {
+      onPawnMove({
+        playerId: currentPlayerId,
+        color: playerColor,
+        pawnIndex: playerPawnIndex,
+        newPosition,
+      });
     }
+    return true;
+  }
 
-    // Calculate the exact final position
-    let finalPos
-    if (typeof newPosition === 'object') {
-      finalPos = newPosition
-    } else if (newPosition === 'home') {
-      const homePos = initialPawns[pawnId - 1].pos
-      finalPos = { x: homePos[0], y: homePos[1], z: homePos[2] }
-    } else if (newPosition === 'finish') {
-      const finishPos = getFinishPosition(playerColor, playerPawnIndex)
-      finalPos = { x: finishPos.x, y: finishPos.y, z: finishPos.z }
-    } else {
-      return false
-    }
+  // Start animation  
+  setAnimatingPawns((prev) => new Set(prev).add(pawnId));
 
-    // Get the precise path for animation
-    const path = getPathPositions(
-      startPos,
-      finalPos,
-      gameState.diceValue,
-      playerColor,
-      currentPawnState.position, // Pass the logical position state
-    )
-
-    console.log('Animation steps:', path.length, 'Path:', path)
-
-    if (path.length === 0) {
-      // No animation needed, just update position
-      pawnRef.position.set(finalPos.x, finalPos.y || 0.253, finalPos.z)
+  animatePawnMove(
+    pawnRef,
+    path,
+    () => {
+      setAnimatingPawns((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(pawnId);
+        return newSet;
+      });
 
       if (onPawnMove) {
         onPawnMove({
@@ -308,38 +334,14 @@ const LudoBoard = forwardRef((props, ref) => {
           color: playerColor,
           pawnIndex: playerPawnIndex,
           newPosition,
-        })
+        });
       }
-      return true
-    }
+    },
+    400 // Slightly slower for better visibility
+  );
 
-    // Start animation
-    setAnimatingPawns((prev) => new Set(prev).add(pawnId))
-
-    animatePawnMove(
-      pawnRef,
-      path,
-      () => {
-        setAnimatingPawns((prev) => {
-          const newSet = new Set(prev)
-          newSet.delete(pawnId)
-          return newSet
-        })
-
-        if (onPawnMove) {
-          onPawnMove({
-            playerId: currentPlayerId,
-            color: playerColor,
-            pawnIndex: playerPawnIndex,
-            newPosition,
-          })
-        }
-      },
-      400, // Slightly slower for better visibility
-    )
-
-    return true
-  }
+  return true;
+};
 
   // Track which pawns are clickable
   useEffect(() => {

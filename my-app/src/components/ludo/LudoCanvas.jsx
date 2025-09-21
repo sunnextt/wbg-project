@@ -23,6 +23,7 @@ export default function LudoCanvas({
   gameState,
   onPawnMove,
   onRollDice,
+  passTurn,
 }) {
   const { nodes, materials } = useGLTF('/ludo_board_games.glb')
   const ludoBoardRef = useRef()
@@ -199,6 +200,7 @@ export default function LudoCanvas({
           gameState={gameState}
           currentPlayerId={currentPlayerId}
           onPawnMove={handlePawnMove}
+          passTurn={passTurn}
           players={players}
           socket={socket}
           gameId={gameId}

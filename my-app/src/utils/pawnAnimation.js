@@ -1,74 +1,124 @@
 import { BOARD_CONFIG } from './boardConfig';
 import { positionsEqual } from './ludoUtils';
 
-export const getPathPositions = (startPos, endPos, steps, color, currentPositionState) => {
+
+export const getPathPositions = (
+  startPos,
+  endPos,
+  steps,
+  color,
+  currentPositionState,
+  pawnIndex = 0
+) => {
   const path = [];
-  
-  // If moving from home to start
-  if (currentPositionState === 'home') {
-    const startPosition = BOARD_CONFIG.startPositions[color];
-    return [startPosition];
+  const { mainTrack, homeColumns, entryPositions, startPositions, finalPositions } =
+    BOARD_CONFIG;
+
+  // === 1. From home base ===
+  if (currentPositionState === "home") {
+    if (steps === 6) {
+      path.push(startPositions[color]);
+    }
+    return path;
   }
 
-  // If moving to finish
-  if (endPos === 'finish') {
-    const finishPosition = BOARD_CONFIG.finalPositions[color][0]; // Use specific pawn finish position
-    return [finishPosition];
+  // === 2. Already finished ===
+  if (endPos === "finish") {
+    path.push(finalPositions[color][pawnIndex]);
+    return path;
   }
 
-  // For moves on the board, calculate exact path
-  const mainTrack = BOARD_CONFIG.mainTrack;
-  const homeColumn = BOARD_CONFIG.homeColumns[color];
-  const entryPosition = BOARD_CONFIG.entryPositions[color];
-
-  // Check if currently in home column
-  const currentHomeIndex = homeColumn.findIndex(pos => 
+  // === 3. Inside home column ===
+  const homeColumn = homeColumns[color];
+  const homeColumnLength = homeColumn.length - 1
+  const currentHomeIndex = homeColumn.findIndex((pos) =>
     positionsEqual(pos, startPos)
   );
 
   if (currentHomeIndex !== -1) {
-    // Moving within home column
-    const targetHomeIndex = currentHomeIndex + steps;
-    if (targetHomeIndex < homeColumn.length) {
-      for (let i = currentHomeIndex + 1; i <= targetHomeIndex; i++) {
+    const targetIndex = currentHomeIndex + steps;
+
+    if (targetIndex < homeColumnLength) {
+      for (let i = currentHomeIndex + 1; i <= targetIndex; i++) {
         path.push(homeColumn[i]);
       }
+      return path;
     }
-    return path;
+
+    if (targetIndex === homeColumnLength) {
+      for (let i = currentHomeIndex + 1; i < homeColumnLength; i++) {
+        path.push(homeColumn[i]);
+      }
+      path.push(finalPositions[color][pawnIndex]);
+      return path;
+    }
+
+    // Overshoot → no movement
+    return [];
   }
 
-  // Check if currently on main track
-  const currentTrackIndex = mainTrack.findIndex(pos => 
+  // === 4. On main track ===
+  const currentTrackIndex = mainTrack.findIndex((pos) =>
     positionsEqual(pos, startPos)
   );
+  if (currentTrackIndex === -1) return [];
 
-  if (currentTrackIndex !== -1) {
-    // Moving on main track
-    let remainingSteps = steps;
-    let currentIndex = currentTrackIndex;
-    
-    while (remainingSteps > 0) {
-      currentIndex = (currentIndex + 1) % mainTrack.length;
-      const nextPos = mainTrack[currentIndex];
-      
-      path.push(nextPos);
-      remainingSteps--;
+  const total = mainTrack.length;
+  const entryIndex = mainTrack.findIndex((pos) =>
+    positionsEqual(pos, entryPositions[color])
+  );
 
-      // Stop if we reached entry point and have steps left for home column
-      if (positionsEqual(nextPos, entryPosition) && remainingSteps > 0) {
-        // Move into home column
-        for (let i = 1; i <= remainingSteps && i < homeColumn.length; i++) {
-          path.push(homeColumn[i]);
-        }
-        break;
-      }
+  let stepsToEntry;
+  if (currentTrackIndex <= entryIndex) {
+    stepsToEntry = entryIndex - currentTrackIndex;
+  } else {
+    stepsToEntry = total - currentTrackIndex + entryIndex;
+  }
+
+  let remainingSteps = steps;
+
+  let currentIndex = currentTrackIndex;
+
+  // === Case A: Entering home column ===
+  if (steps > stepsToEntry) {
+    // First move along main track to entry
+    for (let i = 1; i <= stepsToEntry; i++) {
+      currentIndex = (currentIndex + 1) % total;
+      path.push(mainTrack[currentIndex]);
     }
-    
+
+    // Then move into home column
+    const stepsIntoHome = steps - stepsToEntry;
+    const homeColumnIndex = stepsIntoHome - 1;
+
+    if (homeColumnIndex < homeColumn.length - 1) {
+      for (let i = 0; i <= homeColumnIndex; i++) {
+        path.push(homeColumn[i]);
+      }
+    } else if (homeColumnIndex === homeColumn.length - 1) {
+      for (let i = 0; i < homeColumnLength; i++) {
+        path.push(homeColumn[i]);
+      }
+      path.push(finalPositions[color][pawnIndex]);
+    }
     return path;
   }
 
-  // Fallback: direct move
-  return [endPos];
+  // === Case B: Landing exactly on entry ===
+  if (steps === stepsToEntry) {
+    for (let i = 1; i <= steps; i++) {
+      currentIndex = (currentIndex + 1) % total;
+      path.push(mainTrack[currentIndex]);
+    }
+    return path;
+  }
+
+  // === Case C: Staying on main track ===
+  for (let i = 1; i <= steps; i++) {
+    currentIndex = (currentIndex + 1) % total;
+    path.push(mainTrack[currentIndex]);
+  }
+  return path;
 };
 
 export const animatePawnMove = (pawnRef, path, onFinish, stepDuration = 500) => {

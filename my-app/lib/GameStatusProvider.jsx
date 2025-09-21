@@ -24,7 +24,7 @@ export const GameStatusProvider = ({ children }) => {
       const playerText = isCurrentUser ? 'You' : playerName
 
       if (isSix) {
-        if (!isCurrentUser) {
+        if (isCurrentUser) {
           const text = `${playerText} rolled a 6! Extra turn! 😁`
           addGameEvent(text, 4000)
         } else {
@@ -41,7 +41,7 @@ export const GameStatusProvider = ({ children }) => {
       const playerText = isCurrentUser ? 'You have' : `${playerName} has`
       const text = `${playerText} no valid moves. Passing turn.`
       addGameEvent(text, 9000)
-      toast.info('No valid moves available')
+      // toast.info('No valid moves available')
     },
     [addGameEvent],
   )

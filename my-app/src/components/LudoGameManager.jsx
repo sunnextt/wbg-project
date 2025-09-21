@@ -1,21 +1,18 @@
 'use client'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/lib/AuthContext'
 import {
   doc,
   getDoc,
   onSnapshot,
   updateDoc,
-  arrayRemove,
   runTransaction,
   serverTimestamp,
-  deleteDoc,
 } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { toast } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import { useSocket } from '@/lib/socket'
-
 import {
   isValidMove,
   checkCaptures,
@@ -29,47 +26,54 @@ import { useGameStatus } from '@/lib/GameStatusProvider'
 export default function useLudoGameManager(gameId) {
   const { user } = useAuth()
   const socket = useSocket()
+
   const [gameState, setGameState] = useState(null)
-  const [players, setPlayers] = useState([])
-  const [gameStatus, setGameStatus] = useState('loading')
-  const [currentTurn, setCurrentTurn] = useState(null)
   const [error, setError] = useState(null)
-  const [pendingMove, setPendingMove] = useState(null)
-  const [lastMoveTimestamp, setLastMoveTimestamp] = useState(0)
+   const [pendingMove, setPendingMove] = useState(null)
+
+  
 
   const { diceRolled, noValidMoves, needSixToStart, turnPassed, pawnMoved, pawnCaptured, gameStarted } = useGameStatus()
 
   const currentPlayerId = user?.uid || null
 
-  // Real-time game state listener
+  // 🔹 Derived state
+  const players = gameState?.players ?? []
+  const gameStatus = gameState?.status ?? 'loading'
+  const currentTurn = gameState?.currentTurn ?? null
+  const currentPlayer = players.find((p) => p.id === currentPlayerId) || null
+
+  // --- Firestore listener ---
   useEffect(() => {
     if (!gameId) {
       setError('No game ID provided')
-      setGameStatus('error')
       return
     }
 
     const gameRef = doc(db, 'games', gameId)
     const unsubscribe = onSnapshot(
       gameRef,
-      (doc) => {
-        if (!doc.exists()) {
+      (snapshot) => {
+        if (!snapshot.exists()) {
           setError('Game not found')
-          setGameStatus('error')
+          setGameState(null)
           return
         }
 
-        const data = doc.data()
+        const data = snapshot.data()
 
-        setGameState(data)
-        setPlayers(data.players || [])
-        setGameStatus(data.status || 'waiting')
-        setCurrentTurn(data.currentTurn || null)
+        setGameState((prev) => {
+          if (JSON.stringify(prev) === JSON.stringify(data)) {
+            return prev
+          }
+          console.log('🔥 Firestore update received')
+          return data
+        })
         setError(null)
       },
       (err) => {
+        console.error(err)
         setError('Failed to load game')
-        setGameStatus('error')
       },
     )
 
@@ -152,45 +156,45 @@ export default function useLudoGameManager(gameId) {
     }
   }
 
-  const processDiceRoll = useCallback(
-    (diceValue, playerId, isLocalRoll = false) => {
-      setGameState((prev) => ({
-        ...prev,
-        diceValue: diceValue,
-        lastAction: {
-          type: 'dice_roll',
-          value: diceValue,
-          playerId: playerId,
-          timestamp: isLocalRoll ? new Date() : new Date(Date.now()),
-        },
-      }))
+ const processDiceRoll = useCallback(
+  (diceValue, playerId, isLocalRoll = false) => {
+    setGameState((prev) => ({
+      ...prev,
+      diceValue: diceValue,
+      lastAction: {
+        type: 'dice_roll',
+        value: diceValue,
+        playerId: playerId,
+        timestamp: isLocalRoll ? new Date() : new Date(Date.now()),
+      },
+    }))
 
-      // Notify about dice roll
-      const rollingPlayer = players.find((p) => p.id === playerId)
-      if (rollingPlayer) {
-        diceRolled(rollingPlayer.name, diceValue, diceValue === 6, playerId === currentPlayerId)
-      }
+    // Notify about dice roll
+    const rollingPlayer = players.find((p) => p.id === playerId)
 
-      // Check for auto-pass conditions
-      if (playerId === currentPlayerId) {
-        const currentPlayer = players.find((p) => p.id === currentPlayerId)
-        if (currentPlayer) {
-          const allAtHome = areAllPawnsAtHome(currentPlayer)
+    if (rollingPlayer) {
+      diceRolled(rollingPlayer.name, diceValue, diceValue === 6, playerId === currentPlayerId)
+    }
 
-          if (allAtHome && diceValue !== 6) {
-            needSixToStart(currentPlayer.name, true)
+    // Check for auto-pass conditions - ONLY if dice value is NOT 6
+    if (diceValue !== 6 && playerId === currentPlayerId) {
+      const currentPlayer = players.find((p) => p.id === currentPlayerId)
+      if (currentPlayer) {
+        const allAtHome = areAllPawnsAtHome(currentPlayer)
 
-            // Auto-pass after a delay
-            setTimeout(() => {
-              passTurn()
-            }, 1000)
-          }
+        if (allAtHome) {
+          needSixToStart(currentPlayer.name, true)
+
+          // Auto-pass after a delay only if all pawns are at home AND didn't roll a 6
+          setTimeout(() => {
+            passTurn()
+          }, 1000)
         }
       }
-    },
-    [currentPlayerId, players, diceRolled, needSixToStart, passTurn],
-  )
-
+    }
+  },
+  [currentPlayerId, players, diceRolled, needSixToStart, passTurn],
+)
   const handleDiceRolled = useCallback(
     (data) => {
       setGameState((prev) => ({
@@ -414,6 +418,8 @@ export default function useLudoGameManager(gameId) {
 
         await updateDoc(gameRef, updateData)
 
+        pawnMoved(currentPlayer.name, currentPlayer.color, currentGameState.diceValue, true)
+
         // Emit socket event for other players
         socket.emit('pawn-move', {
           gameId,
@@ -434,7 +440,6 @@ export default function useLudoGameManager(gameId) {
           ...(hasWon && { status: 'finished', winner: user.uid }),
         }))
 
-        pawnMoved(currentPlayer.name, currentPlayer.color, currentGameState.diceValue, true)
 
         if (hasWon) {
           toast.success('🎉 You won the game!')
@@ -443,14 +448,17 @@ export default function useLudoGameManager(gameId) {
         }
 
         // Pass turn if needed
-        if (!hasWon && currentGameState.diceValue !== 6) {
+        if (!hasWon && currentGameState?.lastAction.value !== 6) {
           setTimeout(() => {
             passTurn()
           }, 1000)
+          return
         }
 
         return true
       } catch (err) {
+        console.log("pawn move error", err);
+
         toast.error(err.message || 'Move failed')
         return false
       }
@@ -518,6 +526,7 @@ export default function useLudoGameManager(gameId) {
 
       return true
     } catch (error) {
+      
       if (error.message.includes('already started')) {
         toast.error('Cannot join - game already started')
       } else if (error.message.includes('already in this game')) {
@@ -668,10 +677,6 @@ export default function useLudoGameManager(gameId) {
 
         await updateDoc(gameRef, updateData)
 
-        if (!socket) {
-          console.log('@@@@@@@@@@@@@@###############dice_roll now@@@@@@@@@@@@@')
-        }
-
         // Emit socket event
         socket.emit('dice-rolled', {
           gameId,
@@ -679,8 +684,6 @@ export default function useLudoGameManager(gameId) {
           value: diceValue,
           timestamp: Date.now(),
         })
-
-        console.log('@@@@@@@@@@@@@@###############dice_roll now')
 
         // Process the dice roll locally
         processDiceRoll(diceValue, user.uid, true)
@@ -723,8 +726,7 @@ export default function useLudoGameManager(gameId) {
     currentPlayerId,
     isCurrentPlayer: currentTurn === user?.uid,
     isGameCreator: players[0]?.id === user?.uid,
-    currentPlayer: players.find((p) => p.id === user?.uid),
-    lastMoveTimestamp,
+    currentPlayer,
     pendingMove,
   }
 }
