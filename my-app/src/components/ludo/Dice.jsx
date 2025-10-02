@@ -37,7 +37,7 @@ const Dice = forwardRef(
       onStart: () => setIsAnimating(true),
       onRest: () => {
         setIsAnimating(false)
-        if (rollingPlayerId === currentPlayerId && finalValue > 0) {
+        if ( rollingPlayerId === currentPlayerId && currentValue === 0 && finalValue > 0) {
           if (onRollEnd) onRollEnd(finalValue)
         }
       },

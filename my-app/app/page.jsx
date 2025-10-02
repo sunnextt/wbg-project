@@ -9,7 +9,6 @@ import LobbyItem from '@/src/components/LobbyItem'
 import SidebarFriends from '@/src/components/SidebarUsers'
 import { toast } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
-// import PlayerCard from '@/src/components/PlayerCard'
 
 
 export default function Home() {
@@ -49,43 +48,6 @@ export default function Home() {
 
     return () => unsubscribe()
   }, [])
-
-  // const createNewLobby = async () => {
-  //   if (!user) {
-  //     toast.error('You must be logged in to create a lobby')
-  //     return
-  //   }
-
-  //   try {
-  //     const newLobby = {
-  //       title: `${user.displayName || user.email.split('@')[0]}'s Game`,
-  //       status: 'waiting',
-  //       creatorId: user.uid, 
-  //       players: [
-  //         {
-  //           id: user.uid,
-  //           name: user.displayName || user.email.split('@')[0],
-  //           color: 'green',
-  //           ready: false,
-  //           position: 0,
-  //         },
-  //       ],
-  //       createdAt: serverTimestamp(), 
-  //       gameType: 'ludo',
-  //       currentTurn: null,
-  //       diceValue: 0,
-  //       maxPlayers: 4,
-  //     }
-
-  //     const docRef = await addDoc(collection(db, 'games'), newLobby)
-  //     toast.success('Lobby created successfully!')
-  //     return docRef.id
-  //   } catch (error) {
-  //     console.error('Error creating lobby:', error)
-  //     toast.error('Failed to create lobby')
-  //     throw error
-  //   }
-  // }
 
 const createNewLobby = async () => {
   if (!user) {

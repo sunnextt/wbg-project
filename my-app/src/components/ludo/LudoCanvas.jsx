@@ -13,6 +13,8 @@ import Dice from './Dice'
 import GameStatusDisplay from '../GameStatusDisplay'
 import { getColorHex } from '@/src/utils/ludoUtils'
 import GameChat from '../gameChat/GameChat'
+import { Toaster } from 'react-hot-toast'
+
 
 export default function LudoCanvas({
   gameId,
@@ -33,6 +35,9 @@ export default function LudoCanvas({
   const [isRolling, setIsRolling] = useState(false)
   const [remoteRollingPlayer, setRemoteRollingPlayer] = useState(null)
 
+  console.log("messages");
+
+
   useEffect(() => {
     if (gameState?.diceValue !== undefined) {
       setLocalDiceValue(gameState.diceValue)
@@ -51,33 +56,6 @@ export default function LudoCanvas({
     setCurrentTurnName(player?.name || '')
   }, [currentTurn, players])
 
-  // Socket listeners
-  useEffect(() => {
-    if (!socket) return
-
-    const handleRollStart = (data) => {
-      if (data.gameId === gameId && data.playerId !== currentPlayerId) {
-        setRemoteRollingPlayer(data.playerId)
-        setLocalDiceValue(0)
-      }
-    }
-
-    const handleRollComplete = (data) => {
-      if (data.gameId === gameId) {
-        setRemoteRollingPlayer(null)
-        setLocalDiceValue(data.value)
-      }
-    }
-
-    socket.on('dice-roll-start', handleRollStart)
-    socket.on('dice-roll-complete', handleRollComplete)
-
-    return () => {
-      socket.off('dice-roll-start', handleRollStart)
-      socket.off('dice-roll-complete', handleRollComplete)
-    }
-  }, [socket, gameId, currentPlayerId])
-
   const handleRollStart = async () => {
     try {
       const gameRef = doc(db, 'games', gameId)
@@ -92,13 +70,6 @@ export default function LudoCanvas({
           timestamp: serverTimestamp(),
         },
       })
-
-      socket.emit('dice-roll-start', {
-        gameId,
-        playerId: currentPlayerId,
-        timestamp: Date.now(),
-      })
-
       setIsRolling(true)
       setLocalDiceValue(0)
     } catch (error) {
@@ -108,33 +79,14 @@ export default function LudoCanvas({
 
   const handleRollComplete = async (result) => {
     try {
-      const gameRef = doc(db, 'games', gameId)
-
-      await updateDoc(gameRef, {
-        isRolling: false,
-        rollingPlayerId: null,
-        diceValue: result,
-        lastAction: {
-          type: 'dice_roll_complete',
-          value: result,
-          playerId: currentPlayerId,
-          timestamp: serverTimestamp(),
-        },
-      })
-
-      socket.emit('dice-roll-complete', {
-        gameId,
-        playerId: currentPlayerId,
-        value: result,
-        timestamp: Date.now(),
-      })
+      // if (localDiceValue !== 0) return
+      // if (localDiceValue !== 0) return
 
       setLocalDiceValue(result)
       setIsRolling(false)
 
       onRollDice(result)
     } catch (error) {
-      toast.error('Failed to update dice roll')
       setIsRolling(false)
     }
   }
@@ -154,12 +106,6 @@ export default function LudoCanvas({
       !gameState?.diceValue
     )
   }
-
-  // const getRollingStatus = () => {
-  //   if (isRolling) return currentPlayerId !== currentTurn ? `${currentTurnName} is rolling...` : 'You are rolling...'
-  //   if (currentPlayerId !== currentTurn) return `${currentTurnName} is making move`
-  //   return null
-  // }
 
   const getButtonText = () => {
     if (isRolling) return 'Rolling...'
@@ -193,13 +139,13 @@ export default function LudoCanvas({
         <OrthographicCamera makeDefault position={[0, 25, 0]} zoom={45} />
         <ambientLight intensity={0.5} />
         <directionalLight position={[10, 20, 10]} intensity={1.2} castShadow />
-        <Environment preset='sunset' />
+        <Environment preset='park' />
 
         <LudoBoard
           ref={ludoBoardRef}
           gameState={gameState}
           currentPlayerId={currentPlayerId}
-          onPawnMove={handlePawnMove}
+          onPawnMove={currentTurn === currentPlayerId && handlePawnMove}
           passTurn={passTurn}
           players={players}
           socket={socket}
@@ -209,9 +155,9 @@ export default function LudoCanvas({
         />
 
         <Dice
-          onRollEnd={handleRollComplete}
+          onRollEnd={currentTurn === currentPlayerId && handleRollComplete}
           isRolling={isRolling}
-          rollingPlayerId={remoteRollingPlayer || currentPlayerId}
+          rollingPlayerId={currentTurn}
           currentPlayerId={currentPlayerId}
           currentValue={localDiceValue}
         />
@@ -226,10 +172,28 @@ export default function LudoCanvas({
       </Canvas>
 
       {/* Game UI Controls */}
+      <Toaster
+        position="bottom-center"
+        containerStyle={{
+          position: 'absolute',
+          bottom: '80px',
+          zIndex: 1000,
+        }}
+        toastOptions={{
+          duration: 3000,
+          style: {
+            background: 'linear-gradient(to right, #6d28d9, #2563eb)',
+            color: '#fff',
+            borderRadius: '0.5rem',
+            padding: '10px 14px',
+            fontSize: '0.8rem',
+            maxWidth: '280px',
+          },
+        }}
+      />
 
-      <GameStatusDisplay />
-      <GameChat gameId={gameId} players={players} />
-
+      {/* Your GameChat component */}
+      <GameChat gameId={gameId} gameStatus={gameStatus} />
 
       <div className='absolute bottom-8 left-0 right-0 flex flex-col items-center gap-2'>
         <button

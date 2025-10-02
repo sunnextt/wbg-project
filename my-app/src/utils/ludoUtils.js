@@ -689,7 +689,7 @@ export const checkCaptures = (position, currentPlayerColor, allPlayers) => {
   const captured = [];
   
   if (isSafeSquare(position)) {
-    return captured; // No captures on safe squares
+    return captured; 
   }
   
   allPlayers.forEach(player => {
@@ -804,23 +804,6 @@ export const getPawnIndexFromPawnId = (pawnId) => {
   return (pawnId - 1) % 4;
 };
 
-// Debug function for moves
-export const debugMove = (currentPosition, calculatedPosition, diceValue, color, isValid) => {
-  console.log('=== MOVE DEBUG INFO ===');
-  console.log('Current position:', currentPosition);
-  console.log('Calculated position:', calculatedPosition);
-  console.log('Dice value:', diceValue);
-  console.log('Player color:', color);
-  console.log('Is valid move:', isValid);
-  console.log('Current position type:', typeof currentPosition);
-  console.log('Calculated position type:', typeof calculatedPosition);
-  
-  if (typeof currentPosition === 'object' && typeof calculatedPosition === 'object') {
-    console.log('Positions are equal:', JSON.stringify(currentPosition) === JSON.stringify(calculatedPosition));
-  }
-  console.log('========================');
-};
-
 // Visual feedback for invalid moves
 export const showInvalidMoveFeedback = (object) => {
   if (!object || !object.material) return;
@@ -834,31 +817,6 @@ export const showInvalidMoveFeedback = (object) => {
     }
   }, 100);
 };
-
-// Auto-pass turn if no valid moves
-// export const handleAutoPassTurn = (player, diceValue, passTurnFunction, delay = 2000) => {
-//   const hasValidMoves = checkIfPlayerHasValidMoves(player, diceValue);
-//   const allAtHome = areAllPawnsAtHome(player);
-  
-//   // Auto-pass if no valid moves OR if all pawns are at home and didn't roll a 6
-//   if (allAtHome && diceValue !== 6) {
-//     console.log('All pawns at home without a 6, auto-passing turn', allAtHome);
-//     setTimeout(() => {
-//       passTurnFunction();
-//     }, delay);
-//     return true;
-//   }
-  
-//   if (!hasValidMoves && passTurnFunction) {
-//     console.log('Player has no valid moves, auto-passing turn');
-//     setTimeout(() => {
-//       passTurnFunction();
-//     }, delay);
-//     return true;
-//   }
-  
-//   return false;
-// };
 
 // Auto-pass turn if no valid moves
 export const handleAutoPassTurn = (

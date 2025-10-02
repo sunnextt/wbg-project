@@ -133,6 +133,7 @@ const LudoBoard = forwardRef((props, ref) => {
   const activeColors = players?.map((player) => player.color) || []
   const [clickablePawns, setClickablePawns] = useState([])
   const [isFromDrag, setIsFromDrag] = useState(false)
+  const [draggingPawnId, setDraggingPawnId] = useState(null) 
   const pawnRefs = useRef([])
 
   // Group pawns by position for stacking
@@ -202,6 +203,8 @@ const LudoBoard = forwardRef((props, ref) => {
   const attemptPawnMove = (pawnId) => {
         console.log("@@@@@@ newPosition @@@@@@@@@ attemptPawnMove");
 
+    const isDragging = draggingPawnId === pawnId;
+
     const playerColor = getPlayerColorFromPawnId(pawnId)
     const playerPawnIndex = getPawnIndexFromPawnId(pawnId)
 
@@ -212,6 +215,9 @@ const LudoBoard = forwardRef((props, ref) => {
     const validationResult = isValidMove(currentPawnState.position, gameState.diceValue, playerColor, playerPawnIndex)
 
   if (!validationResult.isValid) {
+    if (isDragging) {
+      setDraggingPawnId(null);
+    }
     return false;
   }
     const newPosition = validationResult.newPos
@@ -334,15 +340,17 @@ const LudoBoard = forwardRef((props, ref) => {
       gameState?.currentTurn !== currentPlayerId ||
       gameState?.diceValue <= 0 ||
       animatingPawns.has(pawnId)||
-      isFromDrag !== true 
+       draggingPawnId !== null 
     ) {
       return
     }
+    console.log("@@@@@@ newPosition @@@@@@@@@ handlePawnClick");
     attemptPawnMove(pawnId)
   }
 
   // Setup drag controls
   useEffect(() => {
+    console.log("@@@@@@ newPosition @@@@@@@@@ Setup drag controls");
     if (controlsRef.current) {
       controlsRef.current.dispose()
       controlsRef.current = null
@@ -352,6 +360,8 @@ const LudoBoard = forwardRef((props, ref) => {
       controlsRef.current = new DragControls(pawnRefs.current, camera, gl.domElement)
 
       controlsRef.current.addEventListener('dragstart', (event) => {
+            console.log("@@@@@@ newPosition @@@@@@@@@ Setup drag controls dragstart");
+
         const pawnIndex = pawnRefs.current.findIndex((ref) => ref === event.object)
         if (pawnIndex === -1) {
           controlsRef.current?.deactivate()
@@ -363,6 +373,7 @@ const LudoBoard = forwardRef((props, ref) => {
           controlsRef.current?.deactivate()
           return
         }
+  setDraggingPawnId(pawnId);
 
         event.object.userData.isOpponentPawn = !isCurrentPlayerPawn(pawnId, currentPlayerId, players)
         event.object.userData.originalPosition = event.object.position.clone()
@@ -370,15 +381,14 @@ const LudoBoard = forwardRef((props, ref) => {
         event.object.material.opacity = 0.8
       })
 
-
-
       controlsRef.current.addEventListener('drag', (event) => {
+        console.log("@@@@@@ newPosition @@@@@@@@@ Setup drag controls drag");
 
+        setIsFromDrag(true)
         const pawnIndex = pawnRefs.current.findIndex((ref) => ref === event.object)
         if (pawnIndex === -1) return
         const pawnId = pawnIndex + 1
         if (!isCurrentPlayerPawn(pawnId, currentPlayerId, players)) return
-
 
         const newPosition = {
           x: event.object.position.x,
@@ -397,6 +407,8 @@ const LudoBoard = forwardRef((props, ref) => {
       })
 
       controlsRef.current.addEventListener('dragend', (event) => {
+                console.log("@@@@@@ newPosition @@@@@@@@@ Setup drag controls dragend");
+
         event.object.material.opacity = event.object.userData.originalOpacity ?? 1
         const pawnIndex = pawnRefs.current.findIndex((ref) => ref === event.object)
         if (pawnIndex === -1) return
@@ -406,21 +418,26 @@ const LudoBoard = forwardRef((props, ref) => {
           if (event.object.userData.originalPosition) {
             event.object.position.copy(event.object.userData.originalPosition)
           }
+          setDraggingPawnId(null); 
           return
         }
 
-        const success = attemptPawnMove(pawnId)
+        // For drag operations, pass true as the second parameter to indicate it's from drag
+        const success = attemptPawnMove(pawnId, true)
         if (!success && event.object.userData.originalPosition) {
           event.object.position.copy(event.object.userData.originalPosition)
+           setDraggingPawnId(null); 
+
         }
       })
       return () => {
+        setIsFromDrag(false)
         if (controlsRef.current) {
           controlsRef.current.dispose()
         }
       }
     }
-  }, [camera, gl, gameState, currentPlayerId,onPawnMove, players, socket, gameId, animatingPawns])
+  }, [camera, gl, gameState, currentPlayerId, players, socket, gameId, animatingPawns])
 
   // Socket listener for opponent drag
   useEffect(() => {

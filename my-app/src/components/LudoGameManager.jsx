@@ -10,7 +10,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
-import { toast } from 'react-toastify'
+import toast from 'react-hot-toast'
 import 'react-toastify/dist/ReactToastify.css'
 import { useSocket } from '@/lib/socket'
 import {
@@ -33,7 +33,7 @@ export default function useLudoGameManager(gameId) {
 
   
 
-  const { diceRolled, noValidMoves, needSixToStart, turnPassed, pawnMoved, pawnCaptured, gameStarted } = useGameStatus()
+  const { diceRolled, needSixToStart, turnPassed, pawnMoved, pawnCaptured } = useGameStatus()
 
   const currentPlayerId = user?.uid || null
 
@@ -148,7 +148,7 @@ export default function useLudoGameManager(gameId) {
 
     const movingPlayer = players.find((p) => p.id === data.playerId)
     if (movingPlayer) {
-      pawnMoved(movingPlayer.name, movingPlayer.color, 'some steps', false)
+      pawnMoved(movingPlayer.name, movingPlayer.color, 'some', false)
     }
 
     if (victimPlayer) {
@@ -200,11 +200,13 @@ export default function useLudoGameManager(gameId) {
       setGameState((prev) => ({
         ...prev,
         diceValue: data.value,
+        isRolling: false,
+        rollingPlayerId: null,
         lastAction: {
           type: 'dice_roll',
           value: data.value,
           playerId: data.playerId,
-          timestamp: new Date(Date.now()),
+          timestamp: serverTimestamp(),
         },
       }))
 
@@ -229,7 +231,7 @@ export default function useLudoGameManager(gameId) {
   const handlePlayerDisconnected = useCallback(
     ({ playerId }) => {
       const playerName = players.find((p) => p.id === playerId)?.name || 'A player'
-      toast.warning(`${playerName} disconnected`)
+      toast.error(`${playerName} disconnected`)
     },
     [players],
   )
@@ -256,14 +258,6 @@ export default function useLudoGameManager(gameId) {
       socket.emit('leave-game', gameId)
     }
   }, [socket, gameId, user?.uid, players, pendingMove])
-
-  useEffect(() => {
-    if (gameState?.diceValue === 0) {
-      if (gameStatus === 'playing') {
-        gameStarted()
-      }
-    }
-  }, [gameStatus, gameStarted])
 
   const processPlayerMove = useCallback((players, playerId, pawnIndex, newPosition) => {
     return players.map((player) => {
@@ -418,7 +412,7 @@ export default function useLudoGameManager(gameId) {
 
         await updateDoc(gameRef, updateData)
 
-        pawnMoved(currentPlayer.name, currentPlayer.color, currentGameState.diceValue, true)
+        pawnMoved(currentPlayer.name, currentPlayer.color, "some", true)
 
         // Emit socket event for other players
         socket.emit('pawn-move', {
@@ -653,7 +647,6 @@ export default function useLudoGameManager(gameId) {
       if (!user || !socket || currentTurn !== user.uid) {
         return
       }
-
       try {
         const gameRef = doc(db, 'games', gameId)
         const gameDoc = await getDoc(gameRef)
@@ -667,6 +660,8 @@ export default function useLudoGameManager(gameId) {
         // Update database
         const updateData = {
           diceValue: diceValue,
+          isRolling: false,
+          rollingPlayerId: null,
           lastAction: {
             type: 'dice_roll',
             value: diceValue,
