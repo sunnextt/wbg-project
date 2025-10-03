@@ -9,10 +9,18 @@ import {
   getPlayerColorFromPawnId,
   getPawnIndexFromPawnId,
   handleAutoPassTurn,
+  checkCaptures,
 } from '../../utils/ludoUtils'
 
-import { animatePawnMove, getPathPositions, calculatePawnOffsets } from '../../utils/pawnAnimation'
+import {
+  animatePawnMoveWithEmission,
+  createEmissionCallbacks,
+  getPathPositions,
+  calculatePawnOffsets,
+  createCapturePath,
+} from '../../utils/pawnAnimation'
 import { useGameStatus } from '@/lib/GameStatusProvider'
+import { getInitialPawns } from '@/src/utils/boardConfig'
 
 extend({ DragControls })
 
@@ -24,6 +32,7 @@ const LudoBoard = forwardRef((props, ref) => {
   const diceRef = useRef()
   const controlsRef = useRef()
   const [animatingPawns, setAnimatingPawns] = useState(new Set())
+  const initialPawnsRef = useRef([])
 
   const { noValidMoves } = useGameStatus()
 
@@ -31,109 +40,20 @@ const LudoBoard = forwardRef((props, ref) => {
     diceRef: diceRef.current,
   }))
 
-  const initialPawns = [
-    // Green pawns
-    { id: 1, geo: nodes.Object_4.geometry, mat: materials.LUDO_COIN_M, pos: [2.232, 0.253, 0.711], scale: 12.073 },
-    { id: 2, geo: nodes.Object_28.geometry, mat: materials.LUDO_COIN_M, pos: [1.635, 0.253, -0.001], scale: 12.073 },
-    { id: 3, geo: nodes.Object_30.geometry, mat: materials.LUDO_COIN_M, pos: [0.918, 0.253, 0.688], scale: 12.073 },
-    { id: 4, geo: nodes.Object_32.geometry, mat: materials.LUDO_COIN_M, pos: [1.612, 0.253, 1.37], scale: 12.073 },
-
-    // Red pawns
-    {
-      id: 5,
-      geo: nodes.Object_10.geometry,
-      mat: materials['LUDO_COIN_M.003'],
-      pos: [-2.592, 0.253, 0.711],
-      scale: 12.073,
-    },
-    {
-      id: 6,
-      geo: nodes.Object_34.geometry,
-      mat: materials['LUDO_COIN_M.003'],
-      pos: [-3.2, 0.253, 0.016],
-      scale: 12.073,
-    },
-    {
-      id: 7,
-      geo: nodes.Object_36.geometry,
-      mat: materials['LUDO_COIN_M.003'],
-      pos: [-3.888, 0.253, 0.711],
-      scale: 12.073,
-    },
-    {
-      id: 8,
-      geo: nodes.Object_38.geometry,
-      mat: materials['LUDO_COIN_M.003'],
-      pos: [-3.223, 0.253, 1.37],
-      scale: 12.073,
-    },
-
-    // Blue pawns
-    {
-      id: 9,
-      geo: nodes.Object_12.geometry,
-      mat: materials['LUDO_COIN_M.002'],
-      pos: [-2.592, 0.253, -4.089],
-      scale: 12.073,
-    },
-    {
-      id: 10,
-      geo: nodes.Object_22.geometry,
-      mat: materials['LUDO_COIN_M.002'],
-      pos: [-3.212, 0.253, -4.777],
-      scale: 12.073,
-    },
-    {
-      id: 11,
-      geo: nodes.Object_24.geometry,
-      mat: materials['LUDO_COIN_M.002'],
-      pos: [-3.906, 0.253, -4.089],
-      scale: 12.073,
-    },
-    {
-      id: 12,
-      geo: nodes.Object_26.geometry,
-      mat: materials['LUDO_COIN_M.002'],
-      pos: [-3.229, 0.253, -3.44],
-      scale: 12.073,
-    },
-
-    // Yellow pawns
-    {
-      id: 13,
-      geo: nodes.Object_14.geometry,
-      mat: materials['LUDO_COIN_M.001'],
-      pos: [0.918, 0.253, -4.106],
-      scale: 12.073,
-    },
-    {
-      id: 14,
-      geo: nodes.Object_16.geometry,
-      mat: materials['LUDO_COIN_M.001'],
-      pos: [2.22, 0.253, -4.083],
-      scale: 12.073,
-    },
-    {
-      id: 15,
-      geo: nodes.Object_18.geometry,
-      mat: materials['LUDO_COIN_M.001'],
-      pos: [1.607, 0.253, -4.777],
-      scale: 12.073,
-    },
-    {
-      id: 16,
-      geo: nodes.Object_20.geometry,
-      mat: materials['LUDO_COIN_M.001'],
-      pos: [1.607, 0.253, -3.446],
-      scale: 12.073,
-    },
-  ]
-
-  const [pawns, setPawns] = useState(initialPawns)
+  const [pawns, setPawns] = useState([])
   const activeColors = players?.map((player) => player.color) || []
   const [clickablePawns, setClickablePawns] = useState([])
   const [isFromDrag, setIsFromDrag] = useState(false)
   const pawnRefs = useRef([])
+
+  // Initialize pawns when nodes and materials are available
+  useEffect(() => {
+    if (nodes && materials) {
+      const initialPawnsData = getInitialPawns(nodes, materials)
+      setPawns(initialPawnsData)
+      initialPawnsRef.current = initialPawnsData
+    }
+  }, [nodes, materials])
 
   // Group pawns by position for stacking
   const getPawnsByPosition = () => {
@@ -146,10 +66,11 @@ const LudoBoard = forwardRef((props, ref) => {
     return grouped
   }
 
-  // Update pawns from gameState
   useEffect(() => {
-    if (gameState?.players) {
-      const updatedPawns = [...initialPawns]
+    if (gameState?.players && initialPawnsRef.current.length > 0) {
+      const updatedPawns = [...initialPawnsRef.current]
+      let hasChanges = false
+
       gameState.players.forEach((player) => {
         if (!player.pawns || !Array.isArray(player.pawns)) {
           player.pawns = Array(4).fill({ position: 'home' })
@@ -159,19 +80,40 @@ const LudoBoard = forwardRef((props, ref) => {
           const pawnId = getPawnId(player.color, index)
           const pawnIndex = pawnId - 1
           if (pawnIndex >= 0 && pawnIndex < updatedPawns.length) {
+            let newPos
+
             if (pawn.position === 'home') {
-              updatedPawns[pawnIndex].pos = [...initialPawns[pawnIndex].pos]
+              newPos = [...initialPawnsRef.current[pawnIndex].pos]
             } else if (pawn.position === 'finish') {
-              updatedPawns[pawnIndex].pos = getFinishPosition(player.color, index)
+              newPos = getFinishPosition(player.color, index)
             } else if (typeof pawn.position === 'object') {
-              updatedPawns[pawnIndex].pos = [pawn.position.x, pawn.position.y, pawn.position.z]
+              newPos = [pawn.position.x, pawn.position.y, pawn.position.z]
+            }
+
+            // Check if position actually changed
+            const currentPos = updatedPawns[pawnIndex].pos
+            if (newPos && (currentPos[0] !== newPos[0] || currentPos[1] !== newPos[1] || currentPos[2] !== newPos[2])) {
+              updatedPawns[pawnIndex].pos = newPos
+              hasChanges = true
+              console.log('hasChanges', hasChanges)
+
+              // Update the visual position immediately if not animating
+              const pawnRef = pawnRefs.current[pawnIndex]
+              if (pawnRef && !animatingPawns.has(pawnId)) {
+                pawnRef.position.set(newPos[0], newPos[1], newPos[2])
+              }
             }
           }
         })
       })
-      setPawns(updatedPawns)
+
+      console.log('hasChanges', hasChanges)
+
+      if (hasChanges) {
+        setPawns(updatedPawns)
+      }
     }
-  }, [gameState])
+  }, [gameState, animatingPawns])
 
   // HANDLE AUTO PASS TURN IF NO VALID MOVE
   useEffect(() => {
@@ -198,10 +140,10 @@ const LudoBoard = forwardRef((props, ref) => {
     }
   }, [gameState, currentPlayerId, players, animatingPawns, noValidMoves, passTurn])
 
+  const emissionCallbacks = createEmissionCallbacks(socket, gameId, currentPlayerId)
 
-  const attemptPawnMove = (pawnId) => {
-        console.log("@@@@@@ newPosition @@@@@@@@@ attemptPawnMove");
-
+  // attemptPawnMove
+  const attemptPawnMove = (pawnId, isDragMove = false) => {
     const playerColor = getPlayerColorFromPawnId(pawnId)
     const playerPawnIndex = getPawnIndexFromPawnId(pawnId)
 
@@ -211,14 +153,92 @@ const LudoBoard = forwardRef((props, ref) => {
     const currentPawnState = currentPlayer.pawns[playerPawnIndex]
     const validationResult = isValidMove(currentPawnState.position, gameState.diceValue, playerColor, playerPawnIndex)
 
-  if (!validationResult.isValid) {
-    return false;
-  }
+    if (!validationResult.isValid) {
+      return false
+    }
+
     const newPosition = validationResult.newPos
     const pawnRef = pawnRefs.current[pawnId - 1]
     if (!pawnRef) return false
 
-    if (isFromDrag) {
+    // Set pawn ID in userData for reference
+    pawnRef.userData.pawnId = pawnId
+
+    const capturedPawns = checkCaptures(newPosition, playerColor, gameState.players)
+
+    if (capturedPawns.length > 0) {
+      capturedPawns.forEach((capturedPawn) => {
+        const capturedPawnId = getPawnId(capturedPawn.color, capturedPawn.pawnIndex)
+        const capturedPawnRef = pawnRefs.current[capturedPawnId - 1]
+
+        if (capturedPawnRef) {
+          // Get home position for the captured pawn
+          const homePos = initialPawnsRef.current[capturedPawnId - 1]?.pos
+          if (homePos) {
+            const homePosition = { x: homePos[0], y: homePos[1], z: homePos[2] }
+
+            // Animate the captured pawn back to home
+            setAnimatingPawns((prev) => new Set(prev).add(capturedPawnId))
+
+            const capturePath = createCapturePath(
+              {
+                x: capturedPawnRef.position.x,
+                y: capturedPawnRef.position.y,
+                z: capturedPawnRef.position.z,
+              },
+              homePosition,
+            )
+
+            animatePawnMoveWithEmission(
+              capturedPawnRef,
+              capturePath,
+              () => {
+                setAnimatingPawns((prev) => {
+                  const newSet = new Set(prev)
+                  newSet.delete(capturedPawnId)
+                  return newSet
+                })
+
+                console.log("@@@@@@@@ capture");
+                
+
+                if (socket && gameId) {
+                  socket.emit('pawn-captured', {
+                    gameId,
+                    pawnId: capturedPawnId,
+                    position: homePosition,
+                    capturedBy: currentPlayerId,
+                  })
+                }
+              },
+              300,
+              emissionCallbacks,
+            )
+          }
+        }
+      })
+    }
+
+    if (isDragMove) {
+      let finalPos
+      if (typeof newPosition === 'object') {
+        finalPos = newPosition
+      } else if (newPosition === 'home') {
+        const homePos = initialPawnsRef.current[pawnId - 1]?.pos
+        if (homePos) {
+          finalPos = { x: homePos[0], y: homePos[1], z: homePos[2] }
+        }
+      } else if (newPosition === 'finish') {
+        const finishPos = getFinishPosition(playerColor, playerPawnIndex)
+        finalPos = { x: finishPos.x, y: finishPos.y, z: finishPos.z }
+      }
+
+      if (finalPos) {
+        pawnRef.position.set(finalPos.x, finalPos.y || 0.253, finalPos.z)
+        // Emit the final position for remote users
+        emissionCallbacks.onAnimationPosition(pawnId, finalPos)
+      }
+
       if (onPawnMove) {
         onPawnMove({
           playerId: currentPlayerId,
@@ -230,7 +250,7 @@ const LudoBoard = forwardRef((props, ref) => {
       return true
     }
 
-    // Get current visual position from the mesh, not from state
+    // Get current visual position from the mesh
     const startPos = {
       x: pawnRef.position.x,
       y: pawnRef.position.y,
@@ -242,8 +262,10 @@ const LudoBoard = forwardRef((props, ref) => {
     if (typeof newPosition === 'object') {
       finalPos = newPosition
     } else if (newPosition === 'home') {
-      const homePos = initialPawns[pawnId - 1].pos
-      finalPos = { x: homePos[0], y: homePos[1], z: homePos[2] }
+      const homePos = initialPawnsRef.current[pawnId - 1]?.pos
+      if (homePos) {
+        finalPos = { x: homePos[0], y: homePos[1], z: homePos[2] }
+      }
     } else if (newPosition === 'finish') {
       const finishPos = getFinishPosition(playerColor, playerPawnIndex)
       finalPos = { x: finishPos.x, y: finishPos.y, z: finishPos.z }
@@ -265,6 +287,9 @@ const LudoBoard = forwardRef((props, ref) => {
       // No animation needed, just update position
       pawnRef.position.set(finalPos.x, finalPos.y || 0.253, finalPos.z)
 
+      // Emit position to remote users
+      emissionCallbacks.onAnimationPosition(pawnId, finalPos)
+
       if (!animatingPawns.has(pawnId) && onPawnMove) {
         onPawnMove({
           playerId: currentPlayerId,
@@ -279,7 +304,7 @@ const LudoBoard = forwardRef((props, ref) => {
     // Start animation
     setAnimatingPawns((prev) => new Set(prev).add(pawnId))
 
-    animatePawnMove(
+    animatePawnMoveWithEmission(
       pawnRef,
       path,
       () => {
@@ -298,11 +323,110 @@ const LudoBoard = forwardRef((props, ref) => {
           })
         }
       },
-      400,
+      200,
+      emissionCallbacks, 
     )
 
     return true
   }
+
+  // Socket listeners for remote animations
+  useEffect(() => {
+    if (!socket || !gameId) return
+
+    const handleRemoteAnimationStart = ({ pawnId, path }) => {
+      const pawnRef = pawnRefs.current[pawnId - 1]
+      if (!pawnRef) return
+
+      if (isCurrentPlayerPawn(pawnId, currentPlayerId, players)) return
+
+      setAnimatingPawns((prev) => new Set(prev).add(pawnId))
+
+      // Start the same animation locally for the remote pawn
+      animatePawnMoveWithEmission(
+        pawnRef,
+        path,
+        () => {
+          setAnimatingPawns((prev) => {
+            const newSet = new Set(prev)
+            newSet.delete(pawnId)
+            return newSet
+          })
+        },
+        200,
+        {}, // Empty callbacks for remote animations (no need to re-emit)
+      )
+    }
+
+    const handleRemoteAnimating = ({ pawnId, position }) => {
+      if (isCurrentPlayerPawn(pawnId, currentPlayerId, players) || animatingPawns.has(pawnId)) {
+        return
+      }
+
+      const pawnRef = pawnRefs.current[pawnId - 1]
+      if (pawnRef) {
+        pawnRef.position.set(position.x, position.y, position.z)
+      }
+    }
+
+    const handleRemoteAnimationEnd = ({ pawnId, finalPosition }) => {
+      const pawnRef = pawnRefs.current[pawnId - 1]
+      if (pawnRef) {
+        pawnRef.position.set(finalPosition.x, finalPosition.y, finalPosition.z)
+        setAnimatingPawns((prev) => {
+          const newSet = new Set(prev)
+          newSet.delete(pawnId)
+          return newSet
+        })
+      }
+    }
+
+    const handlePawnCaptured = ({ pawnId, position, capturedBy }) => {
+      // Don't handle our own capture events (we already animated them locally)
+      if (capturedBy === currentPlayerId) return
+
+      const pawnRef = pawnRefs.current[pawnId - 1]
+      if (pawnRef && !animatingPawns.has(pawnId)) {
+        setAnimatingPawns((prev) => new Set(prev).add(pawnId))
+
+        // Create capture path for visual effect
+        const capturePath = createCapturePath(
+          {
+            x: pawnRef.position.x,
+            y: pawnRef.position.y,
+            z: pawnRef.position.z,
+          },
+          position,
+        )
+
+        animatePawnMoveWithEmission(
+          pawnRef,
+          capturePath,
+          () => {
+            setAnimatingPawns((prev) => {
+              const newSet = new Set(prev)
+              newSet.delete(pawnId)
+              return newSet
+            })
+          },
+          300,
+          {},
+        )
+      }
+    }
+
+    socket.on('pawn-captured', handlePawnCaptured)
+    socket.on('pawn-animation-start', handleRemoteAnimationStart)
+    socket.on('pawn-animating', handleRemoteAnimating)
+    socket.on('pawn-animation-end', handleRemoteAnimationEnd)
+
+    return () => {
+      socket.off('pawn-animation-start', handleRemoteAnimationStart)
+      socket.off('pawn-animating', handleRemoteAnimating)
+      socket.off('pawn-animation-end', handleRemoteAnimationEnd)
+      socket.off('pawn-captured', handlePawnCaptured)
+    }
+  }, [socket, gameId, animatingPawns, currentPlayerId, players])
 
   useEffect(() => {
     if (gameState?.players && gameState.currentTurn === currentPlayerId && gameState.diceValue > 0) {
@@ -333,8 +457,8 @@ const LudoBoard = forwardRef((props, ref) => {
       !isCurrentPlayerPawn(pawnId, currentPlayerId, players) ||
       gameState?.currentTurn !== currentPlayerId ||
       gameState?.diceValue <= 0 ||
-      animatingPawns.has(pawnId)||
-      isFromDrag !== true 
+      animatingPawns.has(pawnId) ||
+      isFromDrag !== true
     ) {
       return
     }
@@ -370,15 +494,11 @@ const LudoBoard = forwardRef((props, ref) => {
         event.object.material.opacity = 0.8
       })
 
-
-
       controlsRef.current.addEventListener('drag', (event) => {
-
         const pawnIndex = pawnRefs.current.findIndex((ref) => ref === event.object)
         if (pawnIndex === -1) return
         const pawnId = pawnIndex + 1
         if (!isCurrentPlayerPawn(pawnId, currentPlayerId, players)) return
-
 
         const newPosition = {
           x: event.object.position.x,
@@ -420,7 +540,7 @@ const LudoBoard = forwardRef((props, ref) => {
         }
       }
     }
-  }, [camera, gl, gameState, currentPlayerId,onPawnMove, players, socket, gameId, animatingPawns])
+  }, [camera, gl, gameState, currentPlayerId, onPawnMove, players, socket, gameId, animatingPawns])
 
   // Socket listener for opponent drag
   useEffect(() => {

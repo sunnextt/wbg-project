@@ -1,5 +1,5 @@
 import { BOARD_CONFIG } from './boardConfig';
-import { positionsEqual } from './ludoUtils';
+import { getPawnId, positionsEqual } from './ludoUtils';
 
 
 export const getPathPositions = (
@@ -154,6 +154,135 @@ export const animatePawnMove = (pawnRef, path, onFinish, stepDuration = 500) => 
   setTimeout(animateStep, 100);
 };
 
+// Animation function with emission
+export const animatePawnMoveWithEmission = (pawnRef, path, onFinish, stepDuration = 200, emissionCallbacks = {}) => {
+  const pawn = pawnRef;
+  if (!pawn || !path.length) return;
+
+  let stepIndex = 0;
+
+  // Emit animation start if callback provided
+  if (emissionCallbacks.onAnimationStart) {
+    emissionCallbacks.onAnimationStart(pawnRef.userData.pawnId, path);
+  }
+
+  function animateStep() {
+    if (stepIndex >= path.length) {
+      // Emit final position and animation end
+      const finalPos = path[path.length - 1];
+      if (emissionCallbacks.onAnimationPosition) {
+        emissionCallbacks.onAnimationPosition(pawnRef.userData.pawnId, finalPos);
+      }
+      if (emissionCallbacks.onAnimationEnd) {
+        emissionCallbacks.onAnimationEnd(pawnRef.userData.pawnId, finalPos);
+      }
+      
+      onFinish?.();
+      return;
+    }
+
+    // Move to the exact step position
+    const stepPos = path[stepIndex];
+    pawn.position.set(stepPos.x, stepPos.y || 0.253, stepPos.z);
+
+    // Emit current position to remote users
+    if (emissionCallbacks.onAnimationPosition) {
+      emissionCallbacks.onAnimationPosition(pawnRef.userData.pawnId, stepPos);
+    }
+
+    stepIndex++;
+
+    // Continue only if there are more steps
+    if (stepIndex < path.length) {
+      setTimeout(animateStep, stepDuration);
+    } else {
+      // Final position reached - emit one more time to ensure final position is sent
+      const finalPos = path[path.length - 1];
+      setTimeout(() => {
+        if (emissionCallbacks.onAnimationPosition) {
+          emissionCallbacks.onAnimationPosition(pawnRef.userData.pawnId, finalPos);
+        }
+        if (emissionCallbacks.onAnimationEnd) {
+          emissionCallbacks.onAnimationEnd(pawnRef.userData.pawnId, finalPos);
+        }
+        onFinish?.();
+      }, stepDuration / 2);
+    }
+  }
+
+  // Start animation with a slight delay for better visual
+  setTimeout(animateStep, 100);
+};
+
+// Emission helper functions
+export const createEmissionCallbacks = (socket, gameId, currentPlayerId) => {
+  const emitAnimationPosition = (pawnId, position) => {
+    if (socket && gameId) {
+      try {
+        socket.emit('pawn-animating', {
+          gameId,
+          playerId: currentPlayerId,
+          pawnId,
+          position: {
+            x: position.x,
+            y: position.y || 0.253,
+            z: position.z
+          },
+          timestamp: Date.now()
+        });
+      } catch (error) {
+        console.warn('Failed to emit animation position:', error);
+      }
+    }
+  };
+
+  const emitAnimationStart = (pawnId, path) => {
+    if (socket && gameId) {
+      try {
+        socket.emit('pawn-animation-start', {
+          gameId,
+          playerId: currentPlayerId,
+          pawnId,
+          path: path.map(pos => ({
+            x: pos.x,
+            y: pos.y || 0.253,
+            z: pos.z
+          })),
+          startTime: Date.now()
+        });
+      } catch (error) {
+        console.warn('Failed to emit animation start:', error);
+      }
+    }
+  };
+
+  const emitAnimationEnd = (pawnId, finalPosition) => {
+    if (socket && gameId) {
+      try {
+        socket.emit('pawn-animation-end', {
+          gameId,
+          playerId: currentPlayerId,
+          pawnId,
+          finalPosition: {
+            x: finalPosition.x,
+            y: finalPosition.y || 0.253,
+            z: finalPosition.z
+          }
+        });
+      } catch (error) {
+        console.warn('Failed to emit animation end:', error);
+      }
+    }
+  };
+
+  return {
+    onAnimationStart: emitAnimationStart,
+    onAnimationPosition: emitAnimationPosition,
+    onAnimationEnd: emitAnimationEnd
+  };
+};
+
+
 export const calculatePawnOffsets = (pawnsInCell, index) => {
   const totalPawns = pawnsInCell.length;
   if (totalPawns === 1) return { x: 0, z: 0, scale: 1 };
@@ -193,4 +322,23 @@ export const calculatePawnOffsets = (pawnsInCell, index) => {
   }
   
   return { x: 0, z: 0, scale: 1 };
+};
+
+// Add this helper function to create a visual path for capture animation
+export const createCapturePath = (startPos, endPos) => {
+  // Create a small arc animation for visual effect
+  const midY = Math.max(startPos.y, endPos.y) + 1.5; // Add some height for the arc
+  const midPoint = {
+    x: (startPos.x + endPos.x) / 2,
+    y: midY,
+    z: (startPos.z + endPos.z) / 2
+  };
+  
+  return [startPos, midPoint, endPos];
+};
+
+ export const getHomePosition = (color, pawnIndex) => {
+  const pawnId = getPawnId(color, pawnIndex);
+  const homePos = initialPawnsRef.current[pawnId - 1]?.pos;
+  return homePos ? { x: homePos[0], y: homePos[1], z: homePos[2] } : null;
 };

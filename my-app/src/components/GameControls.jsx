@@ -13,7 +13,7 @@ export default function GameControls({ gameStatus, players, onJoin, onStart, onL
   const canJoin = !isInGame && players.length < 4 && gameStatus === 'waiting'
 
   return (
-    <div className='flex flex-col items-center justify-center gap-4 mt-4'>
+    <div className='flex flex-col items-center justify-center gap-4 mt-4 mb-4'>
       {canJoin && (
         <button onClick={onJoin} className='bg-green-500 hover:bg-green-600 text-white px-6 py-2 rounded-lg'>
           Join Game

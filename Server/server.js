@@ -96,7 +96,6 @@ io.on("connection", (socket) => {
     });
 
     socket.on("dice-rolled", async (data) => {
-      
       try {
         const { gameId } = data;
         socket.to(gameId).emit("dice-rolled", {
@@ -165,33 +164,48 @@ io.on("connection", (socket) => {
       });
     });
 
-socket.on("chat-message", async (data) => {
-  try {
-    const { gameId, senderId, senderName, text } = data;
-
-    // Save to Firestore so it's persistent
-    const chatRef = admin.firestore().collection("games").doc(gameId).collection("chat");
-    await chatRef.add({
-      senderId,
-      senderName,
-      text,
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    socket.on("pawn-animation-start", (data) => {
+      socket.to(data.gameId).emit("pawn-animation-start", data);
     });
 
-    // Broadcast to everyone in the same game room instantly
-    io.to(gameId).emit("chat-message", {
-      gameId,
-      senderId,
-      senderName,
-      text,
-      timestamp: Date.now(),
+    socket.on("pawn-animating", (data) => {
+      socket.to(data.gameId).emit("pawn-animating", data);
     });
-  } catch (error) {
-    console.error("Chat error:", error);
-    socket.emit("chat-error", { message: error.message });
-  }
-});
 
+    socket.on("pawn-animation-end", (data) => {
+      socket.to(data.gameId).emit("pawn-animation-end", data);
+    });
+
+    socket.on("chat-message", async (data) => {
+      try {
+        const { gameId, senderId, senderName, text } = data;
+
+        // Save to Firestore so it's persistent
+        const chatRef = admin
+          .firestore()
+          .collection("games")
+          .doc(gameId)
+          .collection("chat");
+        await chatRef.add({
+          senderId,
+          senderName,
+          text,
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // Broadcast to everyone in the same game room instantly
+        io.to(gameId).emit("chat-message", {
+          gameId,
+          senderId,
+          senderName,
+          text,
+          timestamp: Date.now(),
+        });
+      } catch (error) {
+        console.error("Chat error:", error);
+        socket.emit("chat-error", { message: error.message });
+      }
+    });
 
     socket.on("privateMessage", ({ to, message }) => {
       const recipientSocketId = onlineUsers.get(to);

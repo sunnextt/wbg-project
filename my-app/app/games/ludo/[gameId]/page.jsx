@@ -56,6 +56,17 @@ export default function LudoGamePage() {
               currentPlayerId={currentPlayerId}
             />
 
+            <GameControls
+              gameStatus={gameStatus}
+              players={players}
+              currentPlayerId={currentPlayerId}
+              isGameCreator={isGameCreator}
+              currentPlayer={currentPlayer}
+              onJoin={joinGame}
+              onStart={startGame}
+              onLeave={leaveGame}
+            />
+
             <LudoCanvas
               gameId={gameId}
               players={players}
@@ -66,17 +77,6 @@ export default function LudoGamePage() {
               gameState={gameState}
               onPawnMove={makeMove}
               passTurn={passTurn}
-            />
-
-            <GameControls
-              gameStatus={gameStatus}
-              players={players}
-              currentPlayerId={currentPlayerId}
-              isGameCreator={isGameCreator}
-              currentPlayer={currentPlayer}
-              onJoin={joinGame}
-              onStart={startGame}
-              onLeave={leaveGame}
             />
           </div>
         </div>
