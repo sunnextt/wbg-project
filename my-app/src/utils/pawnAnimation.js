@@ -324,19 +324,6 @@ export const calculatePawnOffsets = (pawnsInCell, index) => {
   return { x: 0, z: 0, scale: 1 };
 };
 
-// Add this helper function to create a visual path for capture animation
-export const createCapturePath = (startPos, endPos) => {
-  // Create a small arc animation for visual effect
-  const midY = Math.max(startPos.y, endPos.y) + 1.5; // Add some height for the arc
-  const midPoint = {
-    x: (startPos.x + endPos.x) / 2,
-    y: midY,
-    z: (startPos.z + endPos.z) / 2
-  };
-  
-  return [startPos, midPoint, endPos];
-};
-
  export const getHomePosition = (color, pawnIndex) => {
   const pawnId = getPawnId(color, pawnIndex);
   const homePos = initialPawnsRef.current[pawnId - 1]?.pos;
