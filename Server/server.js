@@ -175,6 +175,16 @@ io.on("connection", (socket) => {
     socket.on("pawn-animation-end", (data) => {
       socket.to(data.gameId).emit("pawn-animation-end", data);
     });
+    // Handle hand movement with state
+    socket.on("hand-move", ({ gameId, playerId, position, state }) => {
+      if (!gameId || !playerId || !position) return;
+
+      socket.to(gameId).emit("hand-move", {
+        playerId,
+        position,
+        state: state,
+      });
+    });
 
     socket.on("chat-message", async (data) => {
       try {

@@ -1,6 +1,8 @@
 import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react'
 import { useThree, extend } from '@react-three/fiber'
+import * as THREE from 'three'
 import { DragControls } from 'three/examples/jsm/controls/DragControls'
+
 import {
   isValidMove,
   getPawnId,
@@ -9,7 +11,6 @@ import {
   getPlayerColorFromPawnId,
   getPawnIndexFromPawnId,
   handleAutoPassTurn,
-  checkCaptures,
 } from '../../utils/ludoUtils'
 
 import {
@@ -19,7 +20,9 @@ import {
   calculatePawnOffsets,
 } from '../../utils/pawnAnimation'
 import { useGameStatus } from '@/lib/GameStatusProvider'
-import { getInitialPawns } from '@/src/utils/boardConfig'
+import throttle from 'lodash.throttle'
+import { Html } from '@react-three/drei'
+import { GrabHand, OpenHand, PointerHand } from '../HandIcons'
 
 extend({ DragControls })
 
@@ -142,6 +145,75 @@ const LudoBoard = forwardRef((props, ref) => {
   const [isFromDrag, setIsFromDrag] = useState(false)
   const pawnRefs = useRef([])
 
+  // 🖐️ Hand movement states
+  const [hoveredPawnId, setHoveredPawnId] = useState(null)
+  const [isGrabbing, setIsGrabbing] = useState(false)
+  const [handPosition, setHandPosition] = useState(null)
+  const [remoteHands, setRemoteHands] = useState({})
+  const raycaster = useRef(new THREE.Raycaster())
+  const mouse = useRef(new THREE.Vector2())
+
+  // 🧠 Throttled socket emission for hand movement with state
+  const emitHandMove = useRef(
+    throttle((position, state = 'normal') => {
+      socket?.emit('hand-move', {
+        gameId,
+        playerId: currentPlayerId,
+        position,
+        state,
+      })
+    }, 50),
+  ).current
+
+  // 🖱️ Track mouse/hand position with state updates
+  useEffect(() => {
+    if (!socket) return
+    const handleMouseMove = (event) => {
+      const rect = gl.domElement.getBoundingClientRect()
+      mouse.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+      mouse.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+
+      raycaster.current.setFromCamera(mouse.current, camera)
+
+      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
+      const intersection = new THREE.Vector3()
+      raycaster.current.ray.intersectPlane(plane, intersection)
+
+      if (intersection) {
+        setHandPosition(intersection)
+
+        // Determine hand state
+        let handState = 'normal'
+        if (isGrabbing) {
+          handState = 'grab'
+        } else if (hoveredPawnId) {
+          handState = 'hover'
+        }
+
+        emitHandMove(intersection, handState)
+      }
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    return () => window.removeEventListener('mousemove', handleMouseMove)
+  }, [camera, gl, socket, emitHandMove, isGrabbing, hoveredPawnId])
+
+  // 🎯 Listen for remote hand movement with state
+  useEffect(() => {
+    if (!socket || !gameId) return
+
+    const handleRemoteHandMove = ({ playerId, position, state }) => {
+      if (playerId === currentPlayerId) return
+      setRemoteHands((prev) => ({
+        ...prev,
+        [playerId]: { position, state },
+      }))
+    }
+
+    socket.on('hand-move', handleRemoteHandMove)
+    return () => socket.off('hand-move', handleRemoteHandMove)
+  }, [socket, gameId, currentPlayerId])
+
   // Group pawns by position for stacking
   const getPawnsByPosition = () => {
     const grouped = {}
@@ -153,7 +225,7 @@ const LudoBoard = forwardRef((props, ref) => {
     return grouped
   }
 
- // Update pawns from gameState
+  // Update pawns from gameState
   useEffect(() => {
     if (gameState?.players) {
       const updatedPawns = [...initialPawns]
@@ -308,6 +380,7 @@ const LudoBoard = forwardRef((props, ref) => {
           newPosition,
         })
       }
+      setHoveredPawnId(false)
       return true
     }
 
@@ -334,9 +407,9 @@ const LudoBoard = forwardRef((props, ref) => {
         }
       },
       200,
-      emissionCallbacks, 
+      emissionCallbacks,
     )
-
+    setHoveredPawnId(false)
     return true
   }
 
@@ -425,6 +498,7 @@ const LudoBoard = forwardRef((props, ref) => {
 
   // Handle pawn click
   const handlePawnClick = (pawnId, event) => {
+    setHoveredPawnId(true)
     setIsFromDrag(false)
     event.stopPropagation()
     if (
@@ -449,7 +523,26 @@ const LudoBoard = forwardRef((props, ref) => {
     if (pawnRefs.current.length > 0 && gameState?.currentTurn === currentPlayerId && gameState?.diceValue > 0) {
       controlsRef.current = new DragControls(pawnRefs.current, camera, gl.domElement)
 
+      // Hover events
+      controlsRef.current.addEventListener('hoveron', () => {
+        if (handPosition) {
+          emitHandMove(handPosition, 'hover')
+        }
+      })
+
+      controlsRef.current.addEventListener('hoveroff', (event) => {
+        // Emit normal state when not hovering
+        if (handPosition && !isGrabbing) {
+          emitHandMove(handPosition, 'normal')
+        }
+      })
+
       controlsRef.current.addEventListener('dragstart', (event) => {
+        setIsGrabbing(true)
+        if (handPosition) {
+          emitHandMove(handPosition, 'grab')
+        }
+
         const pawnIndex = pawnRefs.current.findIndex((ref) => ref === event.object)
         if (pawnIndex === -1) {
           controlsRef.current?.deactivate()
@@ -491,6 +584,12 @@ const LudoBoard = forwardRef((props, ref) => {
       })
 
       controlsRef.current.addEventListener('dragend', (event) => {
+        setIsGrabbing(false)
+        // Emit normal state after drag ends
+        if (handPosition) {
+          emitHandMove(handPosition, 'normal')
+        }
+
         event.object.material.opacity = event.object.userData.originalOpacity ?? 1
         const pawnIndex = pawnRefs.current.findIndex((ref) => ref === event.object)
         if (pawnIndex === -1) return
@@ -512,6 +611,7 @@ const LudoBoard = forwardRef((props, ref) => {
         if (controlsRef.current) {
           controlsRef.current.dispose()
         }
+        setHoveredPawnId(false)
       }
     }
   }, [camera, gl, gameState, currentPlayerId, onPawnMove, players, socket, gameId, animatingPawns])
@@ -527,6 +627,79 @@ const LudoBoard = forwardRef((props, ref) => {
     socket.on('pawn-dragging', handleOpponentDrag)
     return () => socket.off('pawn-dragging', handleOpponentDrag)
   }, [socket, gameId])
+
+  const playerColorMap = {
+    red: 'red',
+    green: 'limegreen',
+    blue: 'deepskyblue',
+    yellow: 'gold',
+  }
+
+  // 🖐️ Render hand indicators with dynamic emojis based on state
+  const renderHands = () => {
+    const elements = []
+
+    const getPlayerColor = (playerId) => {
+      const player = players?.find((p) => p.id === playerId)
+      if (!player) return 'white'
+      return playerColorMap[player.color] || 'white'
+    }
+
+    // ✋ Determine emoji based on state for current user
+    const getHandEmoji = () => {
+      if (isGrabbing) return GrabHand // grabbing
+      if (hoveredPawnId) return PointerHand // pointing
+      return OpenHand // normal
+    }
+
+    // 👋 Current user's hand
+    if (handPosition) {
+      const selfPlayer = players?.find((p) => p.id === currentPlayerId)
+      const selfColor = playerColorMap[selfPlayer?.color] || 'hotpink'
+      const Emoji = getHandEmoji()
+
+      elements.push(
+        <Html
+          key='self-hand'
+          position={[handPosition.x, 1.4, handPosition.z]}
+          center
+          style={{
+            pointerEvents: 'none',
+          }}
+        >
+          <Emoji color={selfColor} size={40} />
+        </Html>,
+      )
+    }
+
+    // ✋ Remote users' hands with their states
+    Object.entries(remoteHands).forEach(([playerId, handData]) => {
+      if (!handData?.position) return
+      const color = getPlayerColor(playerId)
+
+      const getHandEmoji = () => {
+      if (handData.state === 'grab') return GrabHand 
+      if (handData.state === 'hover') return PointerHand 
+      return OpenHand 
+    }
+      const Emoji = getHandEmoji()
+
+      elements.push(
+        <Html
+          key={`remote-hand-${playerId}`}
+          position={[handData.position.x, 1.4, handData.position.z]}
+          center
+          style={{
+            pointerEvents: 'none',
+          }}
+        >
+          <Emoji color={color} size={50} />
+        </Html>,
+      )
+    })
+
+    return elements
+  }
 
   // Render pawns with stacking
   const renderPawns = () => {
@@ -596,7 +769,10 @@ const LudoBoard = forwardRef((props, ref) => {
         position={[-0.841, 0.215, -1.715]}
         scale={14.023}
       />
-      <group ref={groupRef}>{renderPawns()}</group>
+      <group ref={groupRef}>
+        {renderPawns()}
+        {renderHands()}
+      </group>
     </group>
   )
 })

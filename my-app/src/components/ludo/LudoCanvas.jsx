@@ -35,8 +35,6 @@ export default function LudoCanvas({
   const [isRolling, setIsRolling] = useState(false)
   const [remoteRollingPlayer, setRemoteRollingPlayer] = useState(null)
 
-  console.log("messages");
-
 
   useEffect(() => {
     if (gameState?.diceValue !== undefined) {
