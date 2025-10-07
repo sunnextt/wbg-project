@@ -143,6 +143,7 @@ export default function LudoCanvas({
           ref={ludoBoardRef}
           gameState={gameState}
           currentPlayerId={currentPlayerId}
+          currentTurn={currentTurn}
           onPawnMove={currentTurn === currentPlayerId && handlePawnMove}
           passTurn={passTurn}
           players={players}

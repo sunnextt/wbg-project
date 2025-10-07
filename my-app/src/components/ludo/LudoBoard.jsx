@@ -27,7 +27,8 @@ import { GrabHand, OpenHand, PointerHand } from '../HandIcons'
 extend({ DragControls })
 
 const LudoBoard = forwardRef((props, ref) => {
-  const { nodes, materials, gameState, currentPlayerId, onPawnMove, passTurn, players, socket, gameId } = props
+  const { nodes, materials, gameState, currentPlayerId, onPawnMove, passTurn, players, socket, gameId, currentTurn } =
+    props
 
   const { camera, gl } = useThree()
   const groupRef = useRef()
@@ -146,8 +147,8 @@ const LudoBoard = forwardRef((props, ref) => {
   const pawnRefs = useRef([])
 
   // 🖐️ Hand movement states
-  const [hoveredPawnId, setHoveredPawnId] = useState(null)
   const [isGrabbing, setIsGrabbing] = useState(false)
+  const [pawnClick, setPawnClick] = useState(false)
   const [handPosition, setHandPosition] = useState(null)
   const [remoteHands, setRemoteHands] = useState({})
   const raycaster = useRef(new THREE.Raycaster())
@@ -155,7 +156,7 @@ const LudoBoard = forwardRef((props, ref) => {
 
   // 🧠 Throttled socket emission for hand movement with state
   const emitHandMove = useRef(
-    throttle((position, state = 'normal') => {
+    throttle((position, state) => {
       socket?.emit('hand-move', {
         gameId,
         playerId: currentPlayerId,
@@ -180,23 +181,24 @@ const LudoBoard = forwardRef((props, ref) => {
       raycaster.current.ray.intersectPlane(plane, intersection)
 
       if (intersection) {
-        setHandPosition(intersection)
+        setHandPosition(true)
 
-        // Determine hand state
-        let handState = 'normal'
-        if (isGrabbing) {
-          handState = 'grab'
-        } else if (hoveredPawnId) {
-          handState = 'hover'
-        }
+      let handState = 'normal'
+    if (isGrabbing) handState = 'grab'
+    else if (pawnClick) handState = 'pointer'
 
-        emitHandMove(intersection, handState)
+      socket.emit('hand-move', {
+        gameId,
+        playerId: currentPlayerId,
+        position: intersection,
+        state: handState,
+      })
       }
     }
 
     window.addEventListener('mousemove', handleMouseMove)
     return () => window.removeEventListener('mousemove', handleMouseMove)
-  }, [camera, gl, socket, emitHandMove, isGrabbing, hoveredPawnId])
+  }, [camera, gl, socket, emitHandMove, isGrabbing])
 
   // 🎯 Listen for remote hand movement with state
   useEffect(() => {
@@ -204,6 +206,9 @@ const LudoBoard = forwardRef((props, ref) => {
 
     const handleRemoteHandMove = ({ playerId, position, state }) => {
       if (playerId === currentPlayerId) return
+
+      console.log("statestatestate", state);
+      
       setRemoteHands((prev) => ({
         ...prev,
         [playerId]: { position, state },
@@ -329,6 +334,7 @@ const LudoBoard = forwardRef((props, ref) => {
           newPosition,
         })
       }
+      setIsGrabbing(false)
       return true
     }
 
@@ -380,7 +386,8 @@ const LudoBoard = forwardRef((props, ref) => {
           newPosition,
         })
       }
-      setHoveredPawnId(false)
+
+      setIsGrabbing(false)
       return true
     }
 
@@ -409,7 +416,7 @@ const LudoBoard = forwardRef((props, ref) => {
       200,
       emissionCallbacks,
     )
-    setHoveredPawnId(false)
+    setIsGrabbing(false)
     return true
   }
 
@@ -498,8 +505,8 @@ const LudoBoard = forwardRef((props, ref) => {
 
   // Handle pawn click
   const handlePawnClick = (pawnId, event) => {
-    setHoveredPawnId(true)
     setIsFromDrag(false)
+    setPawnClick(true)
     event.stopPropagation()
     if (
       !isCurrentPlayerPawn(pawnId, currentPlayerId, players) ||
@@ -511,6 +518,7 @@ const LudoBoard = forwardRef((props, ref) => {
       return
     }
     attemptPawnMove(pawnId)
+    setPawnClick(false)
   }
 
   // Setup drag controls
@@ -523,25 +531,8 @@ const LudoBoard = forwardRef((props, ref) => {
     if (pawnRefs.current.length > 0 && gameState?.currentTurn === currentPlayerId && gameState?.diceValue > 0) {
       controlsRef.current = new DragControls(pawnRefs.current, camera, gl.domElement)
 
-      // Hover events
-      controlsRef.current.addEventListener('hoveron', () => {
-        if (handPosition) {
-          emitHandMove(handPosition, 'hover')
-        }
-      })
-
-      controlsRef.current.addEventListener('hoveroff', (event) => {
-        // Emit normal state when not hovering
-        if (handPosition && !isGrabbing) {
-          emitHandMove(handPosition, 'normal')
-        }
-      })
-
       controlsRef.current.addEventListener('dragstart', (event) => {
-        setIsGrabbing(true)
-        if (handPosition) {
-          emitHandMove(handPosition, 'grab')
-        }
+      emitHandMove(handPosition, 'grab')
 
         const pawnIndex = pawnRefs.current.findIndex((ref) => ref === event.object)
         if (pawnIndex === -1) {
@@ -562,10 +553,11 @@ const LudoBoard = forwardRef((props, ref) => {
       })
 
       controlsRef.current.addEventListener('drag', (event) => {
+              emitHandMove(handPosition, 'grab')
+
         const pawnIndex = pawnRefs.current.findIndex((ref) => ref === event.object)
         if (pawnIndex === -1) return
         const pawnId = pawnIndex + 1
-        if (!isCurrentPlayerPawn(pawnId, currentPlayerId, players)) return
 
         const newPosition = {
           x: event.object.position.x,
@@ -581,37 +573,47 @@ const LudoBoard = forwardRef((props, ref) => {
             newPosition,
           })
         }
+
+        if (!isCurrentPlayerPawn(pawnId, currentPlayerId, players)) return
       })
 
+
+
       controlsRef.current.addEventListener('dragend', (event) => {
-        setIsGrabbing(false)
-        // Emit normal state after drag ends
-        if (handPosition) {
-          emitHandMove(handPosition, 'normal')
-        }
+        emitHandMove(handPosition, 'normal')
 
         event.object.material.opacity = event.object.userData.originalOpacity ?? 1
         const pawnIndex = pawnRefs.current.findIndex((ref) => ref === event.object)
         if (pawnIndex === -1) return
         const pawnId = pawnIndex + 1
 
-        if (!isCurrentPlayerPawn(pawnId, currentPlayerId, players)) {
-          if (event.object.userData.originalPosition) {
-            event.object.position.copy(event.object.userData.originalPosition)
-          }
-          return
-        }
-
         const success = attemptPawnMove(pawnId)
         if (!success && event.object.userData.originalPosition) {
           event.object.position.copy(event.object.userData.originalPosition)
+         
+        // 👇 emit pawn draging snapback to remote users
+        const newPosition = {
+          x: event.object.position.x,
+          y: event.object.position.y,
+          z: event.object.position.z,
         }
+
+        if (socket) {
+          socket.emit('pawn-dragging', {
+            gameId,
+            playerId: currentPlayerId,
+            pawnId,
+            newPosition,
+          })
+        }
+         return
+        }
+        
       })
       return () => {
         if (controlsRef.current) {
           controlsRef.current.dispose()
         }
-        setHoveredPawnId(false)
       }
     }
   }, [camera, gl, gameState, currentPlayerId, onPawnMove, players, socket, gameId, animatingPawns])
@@ -635,53 +637,32 @@ const LudoBoard = forwardRef((props, ref) => {
     yellow: 'gold',
   }
 
-  // 🖐️ Render hand indicators with dynamic emojis based on state
+  // 🖐️ Render hand indicators
   const renderHands = () => {
     const elements = []
 
-    const getPlayerColor = (playerId) => {
-      const player = players?.find((p) => p.id === playerId)
-      if (!player) return 'white'
-      return playerColorMap[player.color] || 'white'
+    const getCurrentTurnColor = () => {
+      if (!gameState?.currentTurn) return '#ffffff'
+
+      const currentTurnPlayer = players?.find((p) => p.id === gameState.currentTurn)
+      if (!currentTurnPlayer) return '#ffffff'
+
+      return playerColorMap[currentTurnPlayer.color] || '#ffffff'
     }
 
-    // ✋ Determine emoji based on state for current user
-    const getHandEmoji = () => {
-      if (isGrabbing) return GrabHand // grabbing
-      if (hoveredPawnId) return PointerHand // pointing
-      return OpenHand // normal
-    }
+    const currentTurnColor = getCurrentTurnColor()
 
-    // 👋 Current user's hand
-    if (handPosition) {
-      const selfPlayer = players?.find((p) => p.id === currentPlayerId)
-      const selfColor = playerColorMap[selfPlayer?.color] || 'hotpink'
-      const Emoji = getHandEmoji()
-
-      elements.push(
-        <Html
-          key='self-hand'
-          position={[handPosition.x, 1.4, handPosition.z]}
-          center
-          style={{
-            pointerEvents: 'none',
-          }}
-        >
-          <Emoji color={selfColor} size={40} />
-        </Html>,
-      )
-    }
+    if (currentPlayerId === currentTurn) return
 
     // ✋ Remote users' hands with their states
     Object.entries(remoteHands).forEach(([playerId, handData]) => {
       if (!handData?.position) return
-      const color = getPlayerColor(playerId)
 
       const getHandEmoji = () => {
-      if (handData.state === 'grab') return GrabHand 
-      if (handData.state === 'hover') return PointerHand 
-      return OpenHand 
-    }
+        if (handData.state === 'grab') return GrabHand
+        if (handData.state === 'pointer') return PointerHand
+        return OpenHand
+      }
       const Emoji = getHandEmoji()
 
       elements.push(
@@ -693,7 +674,7 @@ const LudoBoard = forwardRef((props, ref) => {
             pointerEvents: 'none',
           }}
         >
-          <Emoji color={color} size={50} />
+          <Emoji color={currentTurnColor} size={30} />
         </Html>,
       )
     })

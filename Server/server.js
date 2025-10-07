@@ -178,6 +178,8 @@ io.on("connection", (socket) => {
     // Handle hand movement with state
     socket.on("hand-move", ({ gameId, playerId, position, state }) => {
       if (!gameId || !playerId || !position) return;
+      console.log("gdddddddddddddddddddddd");
+      
 
       socket.to(gameId).emit("hand-move", {
         playerId,
