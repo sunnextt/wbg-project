@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+.Toastify__toast-container {
+  z-index: 9999;
+}
 
 @layer base {
   * {
@@ -15,5 +18,27 @@
     height: 100%;
     margin: 0;
     padding: 0;
+  }
+}
+
+@keyframes slideInDown {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+@keyframes slideOutUp {
+  from {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -20px) scale(0.95);
   }
 }

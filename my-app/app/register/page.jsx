@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { auth } from '../../lib/firebase';
@@ -11,6 +11,8 @@ import { useAuth } from '../../lib/AuthContext';
 export default function RegisterPage() {
   const { user, loading: authLoading } = useAuth();
   const [email, setEmail] = useState('');
+    const [displayName, setDisplayName] = useState('');
+
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -23,7 +25,7 @@ export default function RegisterPage() {
     }
   }, [user, authLoading, router]);
 
-  const handleRegister = async (e) => {
+const handleRegister = async (e) => {
   e.preventDefault();
   setLoading(true);
   setError(null);
@@ -39,15 +41,28 @@ export default function RegisterPage() {
     setLoading(false);
     return;
   }
+  if (!displayName || displayName.length < 4) {
+    setError('Name must be at least 4 characters long.');
+    setLoading(false);
+    return;
+  }
 
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
+
+    await updateProfile(user, { displayName });
+
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
     const res = await axios.post(
       `${apiUrl}/api/users/profile`,
-      { userId: userCredential.user.uid, email: userCredential.user.email },
+      { 
+        userId: user.uid, 
+        email: user.email, 
+        username: displayName  
+      },
       {
-        headers: { Authorization: `Bearer ${await userCredential.user.getIdToken()}` },
+        headers: { Authorization: `Bearer ${await user.getIdToken()}` },
       }
     );
 
@@ -58,27 +73,28 @@ export default function RegisterPage() {
     setSuccess(true);
     setEmail('');
     setPassword('');
-    } catch (err) {
-      if (err.code?.startsWith('auth/')) {
-        switch (err.code) {
-          case 'auth/email-already-in-use':
-            setError('This email is already registered.');
-            break;
-          case 'auth/weak-password':
-            setError('Password is too weak. It must be at least 6 characters.');
-            break;
-          case 'auth/invalid-email':
-            setError('Invalid email format.');
-            break;
-          default:
-            setError(`Registration failed: ${err.message}`);
-        }
-      } else {
-        setError(`Error: ${err.message}`);
+    setDisplayName('');
+  } catch (err) {
+    if (err.code?.startsWith('auth/')) {
+      switch (err.code) {
+        case 'auth/email-already-in-use':
+          setError('This email is already registered.');
+          break;
+        case 'auth/weak-password':
+          setError('Password is too weak. It must be at least 6 characters.');
+          break;
+        case 'auth/invalid-email':
+          setError('Invalid email format.');
+          break;
+        default:
+          setError(`Registration failed: ${err.message}`);
       }
-    } finally {
-      setLoading(false);
+    } else {
+      setError(`Error: ${err.message}`);
     }
+  } finally {
+    setLoading(false);
+  }
 };
 
   if (authLoading) {
@@ -130,6 +146,21 @@ export default function RegisterPage() {
               className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
               aria-label="Email address"
+            />
+          </div>
+            <div>
+            <label className="block text-sm font-medium" htmlFor="displayName">
+              Name
+            </label>
+            <input
+              id="displayName"
+              type="name"
+              placeholder="Enter your display Name"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+              aria-label="displayName address"
             />
           </div>
           <div>

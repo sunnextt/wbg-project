@@ -1,8 +1,7 @@
 import Image from 'next/image'
 import LudoBoard from '../img/ludo-board.webp'
-import Link from 'next/link'
 
-export default function FeaturedBanner() {
+export default function FeaturedBanner({onClick, disabled}) {
   return (
     <div className='bg-white shadow-xl rounded-2xl overflow-hidden flex flex-col md:flex-row transition-all duration-300'>
       <div className='flex-1 p-8 bg-indigo-600 text-white flex flex-col justify-center'>
@@ -10,12 +9,13 @@ export default function FeaturedBanner() {
         <p className='text-md md:text-lg mb-6 opacity-90'>
           Challenge your friends, climb the leaderboard, and enjoy a fresh twist on the timeless Ludo game.
         </p>
-        <Link
-          href='/games/ludo'
+        <button
+        onClick={onClick}
+        disabled={disabled}
           className='bg-white text-indigo-600 font-semibold px-6 py-3 rounded-lg hover:bg-gray-100 transition text-center'
         >
-          Start Playing
-        </Link>
+          Create ludo Lobby
+        </button>
       </div>
 
       <div className='relative md:w-1/2 h-64 md:h-auto'>
