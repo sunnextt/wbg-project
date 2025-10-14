@@ -6,31 +6,76 @@ const socketIO = require("socket.io");
 const connectDB = require("./config/db");
 const User = require("./models/User");
 const admin = require("./services/firebaseAdmin");
-const { log } = require("console");
 
+// Initialize app & server
 const app = express();
 const server = http.createServer(app);
-const io = socketIO(server, {
-  cors: {
-    origin: process.env.CLIENT_URL || "http://localhost:3000",
-    methods: ["GET", "POST"],
+
+// CORS Configuration - Simplified for Heroku
+const allowedOrigins = [
+  process.env.CLIENT_URL || "http://localhost:3000",
+  "https://wbg-project.vercel.app",
+];
+
+// Basic CORS middleware
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
   },
+  credentials: true
+}));
+
+// Increase payload size limit
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
+app.get("/", (req, res) => {
+  res.status(200).json({ 
+    status: "OK", 
+    message: "Server is running",
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  });
 });
 
-// Middleware
-app.use(cors());
-app.use(express.json());
+app.get("/health", (req, res) => {
+  res.status(200).json({ 
+    status: "OK", 
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
 
-// Connect to MongoDB
-connectDB();
+console.log("Attempting to connect to MongoDB...");
+connectDB().catch(error => {
+  console.error("MongoDB connection failed:", error);
+  process.exit(1);
+});
 
-// Game state tracking
-const activeGames = new Map(); // Tracks active game rooms
+// Socket.IO setup
+const io = socketIO(server, {
+  cors: {
+    origin: allowedOrigins,
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+  // Heroku-specific settings
+  transports: ['websocket', 'polling'],
+  pingTimeout: 60000,
+  pingInterval: 25000
+});
 
-// Socket.IO Logic
+
+// --- Game & user state tracking ---
+const activeGames = new Map();
 const onlineUsers = new Map();
 
-// Authentication middleware
+// --- Socket authentication middleware ---
 io.use(async (socket, next) => {
   const token = socket.handshake.auth.token;
   if (!token) return next(new Error("Authentication error"));
@@ -50,7 +95,7 @@ io.on("connection", (socket) => {
   if (uid) {
     onlineUsers.set(uid, socket.id);
 
-    // Mark user as online in DB
+    // Mark user online
     User.findOneAndUpdate({ uid }, { online: true }, { new: true })
       .then(() => {
         io.emit("onlineUsers", [...onlineUsers.keys()]);
@@ -62,10 +107,7 @@ io.on("connection", (socket) => {
       socket.join(gameId);
       console.log(`User ${uid} joined game ${gameId}`);
 
-      // Track game activity
-      if (!activeGames.has(gameId)) {
-        activeGames.set(gameId, new Set());
-      }
+      if (!activeGames.has(gameId)) activeGames.set(gameId, new Set());
       activeGames.get(gameId).add(uid);
     });
 
@@ -81,56 +123,27 @@ io.on("connection", (socket) => {
     });
 
     // --- Game Events ---
-    socket.on("pass-turn", async (data) => {
-      try {
-        const { gameId } = data;
-        socket.to(gameId).emit("pass-turn", {
-          ...data,
-          timestamp: Date.now(),
-        });
-      } catch (error) {
-        socket.emit("pass-turn-error", {
-          message: error.message,
-        });
-      }
+    socket.on("pass-turn", (data) => {
+      const { gameId } = data;
+      socket.to(gameId).emit("pass-turn", { ...data, timestamp: Date.now() });
     });
 
-    socket.on("dice-rolled", async (data) => {
-      try {
-        const { gameId } = data;
-        socket.to(gameId).emit("dice-rolled", {
-          ...data,
-          timestamp: Date.now(),
-        });
-      } catch (error) {
-        socket.emit("dice-rolled-error", {
-          message: error.message,
-        });
-      }
+    socket.on("dice-rolled", (data) => {
+      const { gameId } = data;
+      socket.to(gameId).emit("dice-rolled", { ...data, timestamp: Date.now() });
     });
 
     socket.on("pawn-move", async (data) => {
       try {
-        const {
-          gameId,
-          pawnId,
-          newPosition,
-          isWin,
-          captureCount,
-          victimPlayer,
-        } = data;
+        const { gameId, pawnId, newPosition, isWin, captureCount, victimPlayer } = data;
 
-        // Validate the move
         const gameRef = admin.firestore().doc(`games/${gameId}`);
         const gameDoc = await gameRef.get();
 
         if (!gameDoc.exists) throw new Error("Game not found");
-        if (gameDoc.data().status !== "playing")
-          throw new Error("Game not in progress");
-        if (gameDoc.data().currentTurn !== uid)
-          throw new Error("Not your turn");
+        if (gameDoc.data().status !== "playing") throw new Error("Game not in progress");
+        if (gameDoc.data().currentTurn !== uid) throw new Error("Not your turn");
 
-        // Broadcast to all players in the game except sender
         socket.to(gameId).emit("pawn-move", {
           gameId,
           playerId: uid,
@@ -141,20 +154,13 @@ io.on("connection", (socket) => {
           captureCount,
           victimPlayer,
         });
-
-        // Optional: Update Firebase here if you want server to be authoritative
       } catch (error) {
-        socket.emit("move-error", {
-          message: error.message,
-          pawnId: data.pawnId,
-        });
+        socket.emit("move-error", { message: error.message, pawnId: data.pawnId });
       }
     });
 
     socket.on("pawn-dragging", (data) => {
       const { gameId, pawnId, newPosition } = data;
-
-      // Broadcast to everyone in the same game room except sender
       socket.to(gameId).emit("pawn-dragging", {
         gameId,
         playerId: uid,
@@ -175,24 +181,16 @@ io.on("connection", (socket) => {
     socket.on("pawn-animation-end", (data) => {
       socket.to(data.gameId).emit("pawn-animation-end", data);
     });
-    // Handle hand movement with state
+
     socket.on("hand-move", ({ gameId, playerId, position, state }) => {
       if (!gameId || !playerId || !position) return;
-      console.log("gdddddddddddddddddddddd");
-      
-
-      socket.to(gameId).emit("hand-move", {
-        playerId,
-        position,
-        state: state,
-      });
+      socket.to(gameId).emit("hand-move", { playerId, position, state });
     });
 
     socket.on("chat-message", async (data) => {
       try {
         const { gameId, senderId, senderName, text } = data;
 
-        // Save to Firestore so it's persistent
         const chatRef = admin
           .firestore()
           .collection("games")
@@ -205,7 +203,6 @@ io.on("connection", (socket) => {
           timestamp: admin.firestore.FieldValue.serverTimestamp(),
         });
 
-        // Broadcast to everyone in the same game room instantly
         io.to(gameId).emit("chat-message", {
           gameId,
           senderId,
@@ -239,26 +236,22 @@ io.on("connection", (socket) => {
       });
     });
 
-    // Handle disconnection
     socket.on("disconnect", async () => {
-      if (uid) {
-        onlineUsers.delete(uid);
-        await User.findOneAndUpdate({ uid }, { online: false });
-        io.emit("onlineUsers", [...onlineUsers.keys()]);
+      onlineUsers.delete(uid);
+      await User.findOneAndUpdate({ uid }, { online: false });
+      io.emit("onlineUsers", [...onlineUsers.keys()]);
 
-        // Clean up game rooms
-        activeGames.forEach((players, gameId) => {
-          if (players.has(uid)) {
-            players.delete(uid);
-            if (players.size === 0) {
-              activeGames.delete(gameId);
-            } else {
-              // Notify remaining players about the disconnect
-              io.to(gameId).emit("player-disconnected", { playerId: uid });
-            }
+      activeGames.forEach((players, gameId) => {
+        if (players.has(uid)) {
+          players.delete(uid);
+          if (players.size === 0) {
+            activeGames.delete(gameId);
+          } else {
+            io.to(gameId).emit("player-disconnected", { playerId: uid });
           }
-        });
-      }
+        }
+      });
+
       console.log(`User disconnected: ${uid}`);
     });
   }
@@ -277,6 +270,6 @@ app.get("/api/games/active", (req, res) => {
 
 // Start server
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
 
 module.exports = { server, io };

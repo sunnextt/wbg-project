@@ -157,6 +157,8 @@ const LudoBoard = forwardRef((props, ref) => {
   // 🧠 Throttled socket emission for hand movement with state
   const emitHandMove = useRef(
     throttle((position, state) => {
+      console.log("hello world");
+      
       socket?.emit('hand-move', {
         gameId,
         playerId: currentPlayerId,

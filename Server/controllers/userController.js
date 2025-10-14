@@ -12,6 +12,7 @@ exports.getUserProfile = async (req, res) => {
       const newUser = new User({
         uid: req.user.uid,
         email: req.user.email,
+        email: req.user.username,
       });
       await newUser.save();
       return res.status(200).json(newUser);

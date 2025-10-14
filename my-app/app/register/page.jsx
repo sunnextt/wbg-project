@@ -150,7 +150,7 @@ const handleRegister = async (e) => {
           </div>
             <div>
             <label className="block text-sm font-medium" htmlFor="displayName">
-              Name
+              Username
             </label>
             <input
               id="displayName"

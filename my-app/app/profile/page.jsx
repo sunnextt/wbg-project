@@ -93,6 +93,17 @@ export default function ProfilePage() {
     }
   };
 
+    if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-gray-700">
+        You are not login, go back to 
+           <Link href="/" className="navbar-link hover:underline" aria-label="Home">
+            Home
+          </Link>
+      </div>
+    );
+  }
+
   if (authLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-gray-700">
