@@ -66,7 +66,7 @@ export default function ProfilePage() {
         setSuccess('Profile updated successfully!')
       }
     } catch (err) {
-      setError(`Failed to update profile: ${err.message}`)
+      // setError(`Failed to update profile: ${err.message}`)
     } finally {
       setLoading(false)
     }
@@ -97,17 +97,6 @@ export default function ProfilePage() {
     } finally {
       setLoading(false)
     }
-  }
-
-  if (!user) {
-    return (
-      <div className='min-h-screen flex items-center justify-center text-gray-700'>
-        You are not login, go back to
-        <Link href='/' className='navbar-link hover:underline' aria-label='Home'>
-          Home
-        </Link>
-      </div>
-    )
   }
 
   if (authLoading || loading) {
