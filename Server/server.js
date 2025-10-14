@@ -13,9 +13,7 @@ const server = http.createServer(app);
 
 // CORS Configuration - Simplified for Heroku
 const allowedOrigins = [
-  process.env.CLIENT_URL || "http://localhost:3000",
-  "https://wbg-project.vercel.app",
-];
+  process.env.CLIENT_URL || "http://localhost:3000"];
 
 // Basic CORS middleware
 app.use(cors({
@@ -61,7 +59,7 @@ connectDB().catch(error => {
 const io = socketIO(server, {
   cors: {
     origin: allowedOrigins,
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "PUT"],
     credentials: true,
   },
   // Heroku-specific settings

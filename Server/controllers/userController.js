@@ -4,7 +4,6 @@ const User = require('../models/User');
 // @route   GET /api/users/profile
 exports.getUserProfile = async (req, res) => {
   try {
-    console.log(req.user);
     const user = await User.findOne({ uid: req.user.uid });
 
 
@@ -12,7 +11,7 @@ exports.getUserProfile = async (req, res) => {
       const newUser = new User({
         uid: req.user.uid,
         email: req.user.email,
-        email: req.user.username,
+        username: req.body?.username || req.user.username,
       });
       await newUser.save();
       return res.status(200).json(newUser);
