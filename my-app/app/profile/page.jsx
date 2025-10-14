@@ -52,6 +52,9 @@ export default function ProfilePage() {
     setError(null);
     setSuccess(null);
     try {
+
+      if (!profile?.username || !profile?.Fullname) return
+
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
       const res = await axios.put(`${apiUrl}/api/users/profile`, profile, {
         headers: { Authorization: `Bearer ${token}` },

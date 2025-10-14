@@ -33,13 +33,14 @@ exports.updateUserProfile = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
+    // const { username, Fullname } = req.body;
+
     user.username = req.body?.username || req.user?.username || user.username;
     user.Fullname = req.body?.Fullname || user.Fullname;
 
     await user.save();
     res.status(200).json(user);
   } catch (err) {
-    console.log("@@@@@@@@". err);
     res.status(500).json({ message: err.message });
   }
 };
