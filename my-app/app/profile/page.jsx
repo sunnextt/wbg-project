@@ -21,30 +21,30 @@ export default function ProfilePage() {
     if (!authLoading && !user) router.push('/login')
   }, [user, authLoading, router])
 
-  useEffect(() => {
-    if (user && token) {
-      const fetchProfile = async () => {
+ useEffect(() => {
+  if (!authLoading && user && token) {
+    const fetchProfile = async () => {
+      try {
         setLoading(true)
-        try {
-          const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
-          const res = await axios.get(`${apiUrl}/api/users/profile`, {
-            headers: { Authorization: `Bearer ${token}` },
-          })
-          if (res.status === 200) {
-            setProfile({
-              username: res.data.username || '',
-              Fullname: res.data.Fullname || '',
-            })
-          }
-        } catch (err) {
-          setError(`Failed to fetch profile: ${err.message}`)
-        } finally {
-          setLoading(false)
-        }
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
+        const res = await axios.get(`${apiUrl}/api/users/profile`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        setProfile({
+          username: res.data?.username || '',
+          Fullname: res.data?.Fullname || '',
+        })
+      } catch (err) {
+        console.error('Fetch profile error:', err.response?.data || err.message)
+        setError('Failed to load profile')
+      } finally {
+        setLoading(false)
       }
-      fetchProfile()
     }
-  }, [user, token])
+    fetchProfile()
+  }
+}, [user, token, authLoading])
+
 
   const handleUpdateProfile = async (e) => {
     e.preventDefault()
