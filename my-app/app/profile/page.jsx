@@ -51,8 +51,12 @@ export default function ProfilePage() {
     setLoading(true)
     setError(null)
     setSuccess(null)
+    if (profile.username === '' || profile.Fullname === '') {
+      setLoading(false)
+      return
+    }
     try {
-      if (!profile?.username || !profile?.Fullname) return
+      console.log(profile)
 
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
       const res = await axios.put(`${apiUrl}/api/users/profile`, profile, {
