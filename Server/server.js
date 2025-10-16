@@ -58,8 +58,9 @@ connectDB().catch(error => {
 // Socket.IO setup
 const io = socketIO(server, {
   cors: {
-    origin: allowedOrigins,
-    methods: ["GET", "POST", "PUT"],
+    // origin: allowedOrigins,
+    origin: "*",
+    methods: ["GET", "POST"],
     credentials: true,
   },
   // Heroku-specific settings
