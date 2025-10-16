@@ -1,10 +1,13 @@
 'use client'
-import { createContext, useContext, useCallback } from 'react'
+import { createContext, useContext, useCallback, useEffect } from 'react'
 import toast from 'react-hot-toast'
+import { useSocket } from '@/lib/socket'
 
 const GameStatusContext = createContext()
 
 export const GameStatusProvider = ({ children }) => {
+  const socket = useSocket()
+  
   // Queue system to prevent overlapping toasts
   let toastQueue = []
   let isShowingToast = false
@@ -46,8 +49,20 @@ export const GameStatusProvider = ({ children }) => {
         const text = `${playerText} rolled a ${value}`
         addToQueue(text, 2000)
       }
+
+      // Emit socket event for remote notifications
+      if (socket && isCurrentUser) {
+        socket.emit('game-notification', {
+          type: 'dice_roll',
+          playerName,
+          value,
+          isSix,
+          isLocal: false, // For other players, this will be remote
+          timestamp: Date.now()
+        })
+      }
     },
-    [],
+    [socket],
   )
 
   const noValidMoves = useCallback(
@@ -55,8 +70,17 @@ export const GameStatusProvider = ({ children }) => {
       const playerText = isCurrentUser ? 'You have' : `${playerName} has`
       const text = `${playerText} no valid moves. Passing turn. ⏭️`
       addToQueue(text, 3000)
+
+      if (socket && isCurrentUser) {
+        socket.emit('game-notification', {
+          type: 'no_valid_moves',
+          playerName,
+          isLocal: false,
+          timestamp: Date.now()
+        })
+      }
     },
-    [],
+    [socket],
   )
 
   const needSixToStart = useCallback(
@@ -64,8 +88,17 @@ export const GameStatusProvider = ({ children }) => {
       const playerText = isCurrentUser ? 'You need' : `${playerName} needs`
       const text = `${playerText} to roll a 6 to bring a pawn out 🎯`
       addToQueue(text, 3000)
+
+      if (socket && isCurrentUser) {
+        socket.emit('game-notification', {
+          type: 'need_six',
+          playerName,
+          isLocal: false,
+          timestamp: Date.now()
+        })
+      }
     },
-    [],
+    [socket],
   )
 
   const turnPassed = useCallback(
@@ -80,8 +113,19 @@ export const GameStatusProvider = ({ children }) => {
         const text = `${fromPlayer} passed turn to ${toPlayer} 🔄`
         addToQueue(text, 3000)
       }
+
+      // Emit socket event when current user is passing turn
+      if (socket && context === 'you_passing') {
+        socket.emit('game-notification', {
+          type: 'turn_passed',
+          fromPlayer,
+          toPlayer,
+          context: 'other', // For other players, this is a regular turn pass
+          timestamp: Date.now()
+        })
+      }
     },
-    [],
+    [socket],
   )
 
   const pawnMoved = useCallback(
@@ -96,8 +140,19 @@ export const GameStatusProvider = ({ children }) => {
       
       const text = `${playerText} ${colorEmoji} pawn ${steps} steps ${steps > 1 ? '👣' : '👟'}`
       addToQueue(text, 3000)
+
+      if (socket && isCurrentUser) {
+        socket.emit('game-notification', {
+          type: 'pawn_moved',
+          playerName,
+          pawnColor,
+          steps,
+          isLocal: false,
+          timestamp: Date.now()
+        })
+      }
     },
-    [],
+    [socket],
   )
 
   const pawnCaptured = useCallback(
@@ -116,10 +171,20 @@ export const GameStatusProvider = ({ children }) => {
         const text = `${attacker} captured ${victim}'s ${colorEmoji} pawn! 💥`
         addToQueue(text, 4000)
       }
-    },
-    [],
-  )
 
+      if (socket && isCurrentUser) {
+        socket.emit('game-notification', {
+          type: 'pawn_captured',
+          attacker,
+          victim,
+          pawnColor,
+          isLocal: false,
+          timestamp: Date.now()
+        })
+      }
+    },
+    [socket],
+  )
 
   const gameWon = useCallback(
     (playerName, isCurrentUser = false) => {
@@ -130,8 +195,17 @@ export const GameStatusProvider = ({ children }) => {
         const text = `${playerName} won the game! 👑`
         addToQueue(text, 5000)
       }
+
+      if (socket && isCurrentUser) {
+        socket.emit('game-notification', {
+          type: 'game_won',
+          playerName,
+          isLocal: false,
+          timestamp: Date.now()
+        })
+      }
     },
-    [],
+    [socket],
   )
 
   const customEvent = useCallback(
@@ -140,6 +214,46 @@ export const GameStatusProvider = ({ children }) => {
     },
     [],
   )
+
+  // Handle incoming notifications from socket
+  const handleRemoteNotification = useCallback((data) => {
+    switch (data.type) {
+      case 'dice_roll':
+        diceRolled(data.playerName, data.value, data.isSix, false)
+        break
+      case 'need_six':
+        needSixToStart(data.playerName, false)
+        break
+      case 'turn_passed':
+        turnPassed(data.fromPlayer, data.toPlayer, data.context)
+        break
+      case 'pawn_moved':
+        pawnMoved(data.playerName, data.pawnColor, data.steps, false)
+        break
+      case 'pawn_captured':
+        pawnCaptured(data.attacker, data.victim, data.pawnColor, false)
+        break
+      case 'no_valid_moves':
+        noValidMoves(data.playerName, false)
+        break
+      case 'game_won':
+        gameWon(data.playerName, false)
+        break
+      default:
+        break
+    }
+  }, [diceRolled, needSixToStart, turnPassed, pawnMoved, pawnCaptured, noValidMoves, gameWon])
+
+  // Setup socket listener for notifications
+  useEffect(() => {
+    if (!socket) return
+
+    socket.on('game-notification', handleRemoteNotification)
+
+    return () => {
+      socket.off('game-notification', handleRemoteNotification)
+    }
+  }, [socket, handleRemoteNotification])
 
   return (
     <GameStatusContext.Provider
