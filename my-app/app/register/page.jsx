@@ -21,6 +21,8 @@ export default function RegisterPage() {
   const router = useRouter()
 
   const handleRegister = async (e) => {
+    console.log("@@@@@@@@@@@@click");
+    
     e.preventDefault()
     setLoading(true)
     setError(null)
@@ -70,7 +72,7 @@ export default function RegisterPage() {
       setPassword('')
       setDisplayName('')
 
-      let timer = 5
+      let timer = 6
       setRedirectTimer(timer)
       const countdown = setInterval(() => {
         timer -= 1
