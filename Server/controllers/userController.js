@@ -4,21 +4,7 @@ const User = require("../models/User");
 // @route   GET /api/users/profile
 exports.getUserProfile = async (req, res) => {
   try {
-    if (!req.user || !req.user.uid) {
-      return res.status(401).json({ message: "Unauthorized: No user token" });
-    }
     const user = await User.findOne({ uid: req.user.uid });
-
-    if (!user) {
-      const newUser = new User({
-        uid: req.user.uid,
-        email: req.user.email || '',
-        username: req.body?.username || req.user?.username || '',
-      });
-      await newUser.save();
-      return res.status(200).json(newUser);
-    }
-
 
     res.status(200).json(user);
   } catch (err) {
@@ -29,12 +15,12 @@ exports.getUserProfile = async (req, res) => {
 exports.postUserProfile = async (req, res) => {
   try {
     const user = await User.findOne({ uid: req.user.uid });
-
+    
     if (!user) {
       const newUser = new User({
         uid: req.user.uid,
         email: req.user.email,
-        username: req.body?.username || req.user.username,
+        username: req.body?.username || req.user?.displayName,
       });
       await newUser.save();
 
