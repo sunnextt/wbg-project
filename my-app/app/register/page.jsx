@@ -27,7 +27,7 @@ export default function RegisterPage() {
       }, 1000)
       return () => clearTimeout(timer)
     } else if (success && redirectTimer === 0) {
-      router.push('/profile')
+      router.push('/')
     }
   }, [success, redirectTimer, router])
 
@@ -74,7 +74,7 @@ export default function RegisterPage() {
       )
 
       if (![200, 201].includes(res.status)) {
-        throw new Error(`Backend request failed: ${res.data?.message || 'Unknown error'}`)
+        return
       }
 
       // Set success state and start countdown
@@ -111,10 +111,6 @@ export default function RegisterPage() {
 
   if (authLoading) {
     return <div>Loading...</div>
-  }
-
-  if (user) {
-    return null
   }
 
   return (
