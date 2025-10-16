@@ -51,7 +51,6 @@ export const useSocket = () => {
     return () => {
       socket.off('connect', onConnect)
       socket.off('disconnect', onDisconnect)
-      // Don't disconnect here - we want to maintain the connection
     }
   }, [token])
 
