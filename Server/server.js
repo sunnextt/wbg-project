@@ -131,6 +131,14 @@ io.on("connection", (socket) => {
       socket.to(gameId).emit("dice-rolled", { ...data, timestamp: Date.now() });
     });
 
+    socket.on("game-notification", (data) => {
+      const { gameId } = data;
+      socket.to(gameId).emit("game-notification", { 
+        ...data, 
+        timestamp: Date.now() 
+      });
+    });
+
     socket.on("pawn-move", async (data) => {
       try {
         const { gameId, pawnId, newPosition, isWin, captureCount, victimPlayer } = data;
@@ -254,6 +262,7 @@ io.on("connection", (socket) => {
     });
   }
 });
+
 
 // Routes
 app.use("/api/users", require("./routes/userRoutes"));

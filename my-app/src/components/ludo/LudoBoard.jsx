@@ -157,8 +157,6 @@ const LudoBoard = forwardRef((props, ref) => {
   // 🧠 Throttled socket emission for hand movement with state
   const emitHandMove = useRef(
     throttle((position, state) => {
-      console.log("hello world");
-      
       socket?.emit('hand-move', {
         gameId,
         playerId: currentPlayerId,
@@ -185,16 +183,16 @@ const LudoBoard = forwardRef((props, ref) => {
       if (intersection) {
         setHandPosition(true)
 
-      let handState = 'normal'
-    if (isGrabbing) handState = 'grab'
-    else if (pawnClick) handState = 'pointer'
+        let handState = 'normal'
+        if (isGrabbing) handState = 'grab'
+        else if (pawnClick) handState = 'pointer'
 
-      socket.emit('hand-move', {
-        gameId,
-        playerId: currentPlayerId,
-        position: intersection,
-        state: handState,
-      })
+        socket.emit('hand-move', {
+          gameId,
+          playerId: currentPlayerId,
+          position: intersection,
+          state: handState,
+        })
       }
     }
 
@@ -209,8 +207,8 @@ const LudoBoard = forwardRef((props, ref) => {
     const handleRemoteHandMove = ({ playerId, position, state }) => {
       if (playerId === currentPlayerId) return
 
-      console.log("statestatestate", state);
-      
+      console.log('statestatestate', state)
+
       setRemoteHands((prev) => ({
         ...prev,
         [playerId]: { position, state },
@@ -287,7 +285,7 @@ const LudoBoard = forwardRef((props, ref) => {
   const emissionCallbacks = createEmissionCallbacks(socket, gameId, currentPlayerId)
 
   // attemptPawnMove
-  const attemptPawnMove = (pawnId, isDragMove = false) => {
+  const attemptPawnMove = (pawnId) => {
     const playerColor = getPlayerColorFromPawnId(pawnId)
     const playerPawnIndex = getPawnIndexFromPawnId(pawnId)
 
@@ -308,7 +306,7 @@ const LudoBoard = forwardRef((props, ref) => {
     // Set pawn ID in userData for reference
     pawnRef.userData.pawnId = pawnId
 
-    if (isDragMove) {
+    if (isFromDrag) {
       let finalPos
       if (typeof newPosition === 'object') {
         finalPos = newPosition
@@ -506,119 +504,117 @@ const LudoBoard = forwardRef((props, ref) => {
   }, [gameState, currentPlayerId, players])
 
   // Handle pawn click
-  const handlePawnClick = (pawnId, event) => {
-    setIsFromDrag(false)
-    setPawnClick(true)
-    event.stopPropagation()
-    if (
-      !isCurrentPlayerPawn(pawnId, currentPlayerId, players) ||
-      gameState?.currentTurn !== currentPlayerId ||
-      gameState?.diceValue <= 0 ||
-      animatingPawns.has(pawnId) ||
-      isFromDrag !== true
-    ) {
-      return
-    }
-    attemptPawnMove(pawnId)
-    setPawnClick(false)
+const handlePawnClick = (pawnId, event) => {
+  event.stopPropagation();
+  console.log("🖱️ Pawn clicked:", pawnId);
+
+  // If just finished dragging, ignore accidental click
+  if (isFromDrag) {
+    setIsFromDrag(false);
+    return;
   }
 
-  // Setup drag controls
-  useEffect(() => {
-    if (controlsRef.current) {
-      controlsRef.current.dispose()
-      controlsRef.current = null
-    }
+  if (
+    !isCurrentPlayerPawn(pawnId, currentPlayerId, players) ||
+    gameState?.currentTurn !== currentPlayerId ||
+    gameState?.diceValue <= 0 ||
+    animatingPawns.has(pawnId)
+  ) {
+    return;
+  }
 
-    if (pawnRefs.current.length > 0 && gameState?.currentTurn === currentPlayerId && gameState?.diceValue > 0) {
-      controlsRef.current = new DragControls(pawnRefs.current, camera, gl.domElement)
+  attemptPawnMove(pawnId);
+};
+
+// Setup drag controls
+useEffect(() => {
+  if (controlsRef.current) {
+    controlsRef.current.dispose();
+    controlsRef.current = null;
+  }
+
+  if (gameState?.currentTurn === currentPlayerId && gameState?.diceValue > 0) {
+    const currentPlayerPawnRefs = pawnRefs.current.filter((ref, index) => {
+      if (!ref) return false;
+      const pawnId = index + 1;
+
+      if (!isCurrentPlayerPawn(pawnId, currentPlayerId, players)) return false;
+      if (animatingPawns.has(pawnId)) return false;
+
+      const playerColor = getPlayerColorFromPawnId(pawnId);
+      const playerPawnIndex = getPawnIndexFromPawnId(pawnId);
+      const currentPlayer = players?.find((p) => p.id === currentPlayerId);
+      if (!currentPlayer) return false;
+
+      const pawnState = currentPlayer.pawns[playerPawnIndex];
+      const validationResult = isValidMove(pawnState.position, gameState.diceValue, playerColor, playerPawnIndex);
+      return validationResult.isValid;
+    });
+
+    if (currentPlayerPawnRefs.length > 0) {
+      controlsRef.current = new DragControls(currentPlayerPawnRefs, camera, gl.domElement);
 
       controlsRef.current.addEventListener('dragstart', (event) => {
-      emitHandMove(handPosition, 'grab')
+        setIsFromDrag(true);
+        setIsGrabbing(true);
+        emitHandMove(handPosition, 'grab');
 
-        const pawnIndex = pawnRefs.current.findIndex((ref) => ref === event.object)
-        if (pawnIndex === -1) {
-          controlsRef.current?.deactivate()
-          return
-        }
-        const pawnId = pawnIndex + 1
+        const pawnIndex = pawnRefs.current.findIndex((ref) => ref === event.object);
+        if (pawnIndex === -1) return;
+        const pawnId = pawnIndex + 1;
 
-        if (animatingPawns.has(pawnId)) {
-          controlsRef.current?.deactivate()
-          return
-        }
-
-        event.object.userData.isOpponentPawn = !isCurrentPlayerPawn(pawnId, currentPlayerId, players)
-        event.object.userData.originalPosition = event.object.position.clone()
-        event.object.userData.originalOpacity = event.object.material.opacity
-        event.object.material.opacity = 0.8
-      })
+        event.object.userData.originalPosition = event.object.position.clone();
+        event.object.material.opacity = 0.8;
+      });
 
       controlsRef.current.addEventListener('drag', (event) => {
-              emitHandMove(handPosition, 'grab')
-
-        const pawnIndex = pawnRefs.current.findIndex((ref) => ref === event.object)
-        if (pawnIndex === -1) return
-        const pawnId = pawnIndex + 1
+        emitHandMove(handPosition, 'grab');
+        const pawnIndex = pawnRefs.current.findIndex((ref) => ref === event.object);
+        if (pawnIndex === -1) return;
+        const pawnId = pawnIndex + 1;
 
         const newPosition = {
           x: event.object.position.x,
           y: event.object.position.y,
           z: event.object.position.z,
-        }
+        };
 
-        if (socket) {
-          socket.emit('pawn-dragging', {
-            gameId,
-            playerId: currentPlayerId,
-            pawnId,
-            newPosition,
-          })
-        }
-
-        if (!isCurrentPlayerPawn(pawnId, currentPlayerId, players)) return
-      })
-
-
+        socket?.emit('pawn-dragging', { gameId, playerId: currentPlayerId, pawnId, newPosition });
+      });
 
       controlsRef.current.addEventListener('dragend', (event) => {
-        emitHandMove(handPosition, 'normal')
+        emitHandMove(handPosition, 'normal');
+        setIsGrabbing(false);
 
-        event.object.material.opacity = event.object.userData.originalOpacity ?? 1
-        const pawnIndex = pawnRefs.current.findIndex((ref) => ref === event.object)
-        if (pawnIndex === -1) return
-        const pawnId = pawnIndex + 1
+        const pawnIndex = pawnRefs.current.findIndex((ref) => ref === event.object);
+        if (pawnIndex === -1) return;
+        const pawnId = pawnIndex + 1;
 
-        const success = attemptPawnMove(pawnId)
+        const success = attemptPawnMove(pawnId);
+
         if (!success && event.object.userData.originalPosition) {
-          event.object.position.copy(event.object.userData.originalPosition)
-         
-        // 👇 emit pawn draging snapback to remote users
-        const newPosition = {
-          x: event.object.position.x,
-          y: event.object.position.y,
-          z: event.object.position.z,
-        }
-
-        if (socket) {
-          socket.emit('pawn-dragging', {
+          // Snap back to start
+          event.object.position.copy(event.object.userData.originalPosition);
+          socket?.emit('pawn-dragging', {
             gameId,
             playerId: currentPlayerId,
             pawnId,
-            newPosition,
-          })
+            newPosition: {
+              x: event.object.position.x,
+              y: event.object.position.y,
+              z: event.object.position.z,
+            },
+          });
         }
-         return
-        }
-        
-      })
-      return () => {
-        if (controlsRef.current) {
-          controlsRef.current.dispose()
-        }
-      }
+
+        // Allow next click
+        setTimeout(() => setIsFromDrag(false), 100);
+      });
     }
-  }, [camera, gl, gameState, currentPlayerId, onPawnMove, players, socket, gameId, animatingPawns])
+  }
+
+  return () => controlsRef.current?.dispose();
+}, [camera, gl, gameState, currentPlayerId, players, animatingPawns, handPosition, socket]);
 
   // Socket listener for opponent drag
   useEffect(() => {
@@ -727,6 +723,8 @@ const LudoBoard = forwardRef((props, ref) => {
             pawnId: pawn.id,
             clickable: isClickable,
             isAnimating,
+            isCurrentPlayerPawn: isCurrentPlayerPawn(pawn.id, currentPlayerId, players),
+
           }}
           onClick={(event) => handlePawnClick(pawn.id, event)}
         />
