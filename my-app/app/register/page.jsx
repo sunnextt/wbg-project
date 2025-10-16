@@ -12,21 +12,31 @@ export default function RegisterPage() {
   const { user, loading: authLoading } = useAuth()
   const [email, setEmail] = useState('')
   const [displayName, setDisplayName] = useState('')
-
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(false)
-  const [redirectTimer, setRedirectTimer] = useState(5)
+  const [redirectTimer, setRedirectTimer] = useState(null)
   const router = useRouter()
 
+  // Handle the countdown effect separately
+  useEffect(() => {
+    if (success && redirectTimer > 0) {
+      const timer = setTimeout(() => {
+        setRedirectTimer(redirectTimer - 1)
+      }, 1000)
+      return () => clearTimeout(timer)
+    } else if (success && redirectTimer === 0) {
+      router.push('/profile')
+    }
+  }, [success, redirectTimer, router])
+
   const handleRegister = async (e) => {
-    console.log("@@@@@@@@@@@@click");
-    
     e.preventDefault()
     setLoading(true)
     setError(null)
     setSuccess(false)
+    setRedirectTimer(null)
 
     if (!email || !/\S+@\S+\.\S+/.test(email)) {
       setError('Please enter a valid email address.')
@@ -67,22 +77,15 @@ export default function RegisterPage() {
         throw new Error(`Backend request failed: ${res.data?.message || 'Unknown error'}`)
       }
 
+      // Set success state and start countdown
       setSuccess(true)
+      setRedirectTimer(5) // Start 5-second countdown
+      
+      // Clear form
       setEmail('')
       setPassword('')
       setDisplayName('')
 
-      let timer = 6
-      setRedirectTimer(timer)
-      const countdown = setInterval(() => {
-        timer -= 1
-        setRedirectTimer(timer)
-        if (timer === 0) {
-          clearInterval(countdown)
-          window.location.reload()
-          router.push('/profile')
-        }
-      }, 1000)
     } catch (err) {
       if (err.code?.startsWith('auth/')) {
         switch (err.code) {
@@ -160,13 +163,13 @@ export default function RegisterPage() {
             </label>
             <input
               id='displayName'
-              type='name'
+              type='text'
               placeholder='Enter your display Name'
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               className='w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500'
               required
-              aria-label='displayName address'
+              aria-label='Display name'
             />
           </div>
           <div>
@@ -196,14 +199,11 @@ export default function RegisterPage() {
         </form>
 
         {success && (
-          <p className='text-green-600 mt-4 text-sm' role='alert'>
-            Registration successful!
-          </p>
-        )}
-        {success && (
           <div className='text-green-600 mt-4 text-sm' role='alert'>
-            Registration successful!
-            {redirectTimer > 0 && <p>Redirecting to your profile in {redirectTimer} seconds...</p>}
+            <p>Registration successful!</p>
+            {redirectTimer > 0 && (
+              <p>Redirecting to your profile in {redirectTimer} seconds...</p>
+            )}
           </div>
         )}
 
