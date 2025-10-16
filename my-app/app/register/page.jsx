@@ -20,12 +20,6 @@ export default function RegisterPage() {
   const [redirectTimer, setRedirectTimer] = useState(5)
   const router = useRouter()
 
-  useEffect(() => {
-    if (!authLoading && user) {
-      router.push('/')
-    }
-  }, [user, authLoading, router])
-
   const handleRegister = async (e) => {
     e.preventDefault()
     setLoading(true)
