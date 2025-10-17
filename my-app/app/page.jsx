@@ -92,7 +92,7 @@ const createNewLobby = async () => {
   }
 }
 
-      const imgUrl = "wbg-project.vercel.app" || 'http://localhost:3000'
+      const imgUrl = "/" || 'http://localhost:3000/'
 
 
   const games = [
@@ -100,7 +100,7 @@ const createNewLobby = async () => {
       title: 'Ludo',
       description: 'Classic board game for 2-4 players',
       onClick: '/ludo/new',
-      imageUrl: `${imgUrl}/_next/image?url=%2F_next%2Fstatic%2Fmedia%2Fludo-board.b0ea43c3.webp&w=3840&q=75`,
+      imageUrl: `${imgUrl}_next/image?url=%2F_next%2Fstatic%2Fmedia%2Fludo-board.b0ea43c3.webp&w=3840&q=75`,
     },
   ]
 
