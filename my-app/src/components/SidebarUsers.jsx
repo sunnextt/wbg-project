@@ -9,8 +9,8 @@ import { useSocket } from '@/lib/socket'
 
 export default function SidebarUsers() {
   const { user, token, loading: authLoading } = useAuth()
-  const socket = useSocket() 
-  const [socketConnected, setSocketConnected] = useState(false)
+  const { socket, isConnected, error } = useSocket()
+
 
   const [onlineUsers, setOnlineUsers] = useState([])
   const [openChats, setOpenChats] = useState([])
@@ -19,29 +19,12 @@ export default function SidebarUsers() {
   const [broadcastMessages, setBroadcastMessages] = useState([])
   const [messageInput, setMessageInput] = useState({})
   const [showBroadcastChat, setShowBroadcastChat] = useState(false)
-  const [authError, setAuthError] = useState(null)
 
   const messagesEndRef = useRef({})
 
   useEffect(() => {
     if (!socket || !user) return
 
-    const handleConnect = () => {
-      setSocketConnected(true)
-      setAuthError(null)
-    }
-
-    const handleDisconnect = (reason) => {
-      setSocketConnected(false)
-      console.log('Socket disconnected:', reason)
-    }
-
-    const handleError = (err) => {
-      console.error('Socket error:', err)
-      if (err.message?.includes('Authentication')) {
-        setAuthError('Authentication failed. Please refresh the page.')
-      }
-    }
 
     const handleOnlineUsers = (userIds) => fetchUserDetails(userIds)
 
@@ -56,34 +39,26 @@ export default function SidebarUsers() {
       setBroadcastMessages((prev) => [...prev, { from, username, message, timestamp }])
     }
 
-    socket.on('connect', handleConnect)
-    socket.on('disconnect', handleDisconnect)
-    socket.on('connect_error', handleError)
     socket.on('onlineUsers', handleOnlineUsers)
     socket.on('privateMessage', handlePrivateMessage)
     socket.on('broadcastMessage', handleBroadcastMessage)
 
     return () => {
-      socket.off('connect', handleConnect)
-      socket.off('disconnect', handleDisconnect)
-      socket.off('connect_error', handleError)
       socket.off('onlineUsers', handleOnlineUsers)
       socket.off('privateMessage', handlePrivateMessage)
       socket.off('broadcastMessage', handleBroadcastMessage)
     }
   }, [socket, user])
 
-  const fetchUserDetails = async (userIds) => {
-    if (!token) return
+ const fetchUserDetails = async (userIds) => {
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
-      const responses = await Promise.all(
-        userIds.map((uid) =>
-          axios.get(`${apiUrl}/api/users/${uid}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          })
-        )
+      const promises = userIds.map((uid) =>
+        axios.get(`${apiUrl}/api/users/${uid}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
       )
+      const responses = await Promise.all(promises)
       const users = responses.map((res) => ({
         id: res.data.uid,
         username: res.data.username || 'Unknown',
@@ -94,6 +69,9 @@ export default function SidebarUsers() {
       console.error('Failed to fetch user details:', err)
     }
   }
+
+  console.log(onlineUsers);
+  
 
   const sendPrivateMessage = (targetUserId, e) => {
     e.preventDefault()
@@ -159,13 +137,16 @@ export default function SidebarUsers() {
 
 
   if (authLoading || !user) return null
+  
+
+  
 
   return (
     <>
          <div className='bg-white p-4 rounded-lg shadow-lg w-full max-h-[500px] overflow-y-auto'>
         <div className='flex justify-between items-center mb-3'>
           <h3 className='font-bold text-gray-800 text-base'>
-            {socketConnected ? '🟢' : '🔴'} Online Users
+            {isConnected ? '🟢' : '🔴'} Online Users
           </h3>
           <span
             className='text-xs text-blue-600 font-semibold cursor-pointer hover:underline'
@@ -175,29 +156,12 @@ export default function SidebarUsers() {
           </span>
         </div>
         
-        {authError && (
-          <div className='text-xs text-red-500 mb-2 p-2 bg-red-50 rounded'>
-            {authError}
-            <button 
-              onClick={() => window.location.reload()}
-              className='ml-2 text-blue-600 hover:underline'
-            >
-              Refresh
-            </button>
-          </div>
-        )}
-        
-        {!authError && !socketConnected && (
-          <div className='text-xs text-yellow-600 mb-2'>
-            Connecting to chat service...
-          </div>
-        )}
 
         <ul className='space-y-2'>
           <AnimatePresence>
             {onlineUsers.length === 0 ? (
               <motion.li initial={{ opacity: 0 }} animate={{ opacity: 1 }} className='text-sm text-gray-500'>
-                {socketConnected ? 'No users online' : 'Loading...'}
+                {isConnected ? 'No users online' : 'Loading...'}
               </motion.li>
             ) : (
               onlineUsers.map((onlineUser) => (
@@ -208,7 +172,7 @@ export default function SidebarUsers() {
                   exit={{ opacity: 0, y: -10 }}
                   onClick={() => toggleChat(onlineUser)}
                   className={`flex items-center gap-2 p-2 rounded transition ${
-                    socketConnected ? 'cursor-pointer hover:bg-blue-50' : 'opacity-50'
+                    isConnected ? 'cursor-pointer hover:bg-blue-50' : 'opacity-50'
                   }`}
                 >
                   <div className='w-8 h-8 bg-blue-200 rounded-full flex items-center justify-center font-bold text-blue-800'>

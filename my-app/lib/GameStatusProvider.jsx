@@ -6,7 +6,7 @@ import { useSocket } from '@/lib/socket'
 const GameStatusContext = createContext()
 
 export const GameStatusProvider = ({ children }) => {
-  const socket = useSocket()
+  const { socket } = useSocket()
   
   // Queue system to prevent overlapping toasts
   let toastQueue = []

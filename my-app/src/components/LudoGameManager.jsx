@@ -12,7 +12,6 @@ import {
 import { db } from '@/lib/firebase'
 import toast from 'react-hot-toast'
 import 'react-toastify/dist/ReactToastify.css'
-import { useSocket } from '@/lib/socket'
 import {
   isValidMove,
   checkCaptures,
@@ -22,10 +21,11 @@ import {
   isSafeSquare,
 } from '../utils/ludoUtils'
 import { useGameStatus } from '@/lib/GameStatusProvider'
+import { useSocket } from '@/lib/socket'
 
 export default function useLudoGameManager(gameId) {
   const { user } = useAuth()
-  const socket = useSocket()
+  const { socket } = useSocket()
 
   const [gameState, setGameState] = useState(null)
   const [error, setError] = useState(null)
