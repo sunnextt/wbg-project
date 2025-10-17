@@ -7,15 +7,12 @@ const connectDB = require("./config/db");
 const User = require("./models/User");
 const admin = require("./services/firebaseAdmin");
 
-// Initialize app & server
 const app = express();
 const server = http.createServer(app);
 
-// CORS Configuration - Simplified for Heroku
 const allowedOrigins = [
   process.env.CLIENT_URL || "http://localhost:3000"];
 
-// Basic CORS middleware
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
@@ -28,7 +25,6 @@ app.use(cors({
   credentials: true
 }));
 
-// Increase payload size limit
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
@@ -55,26 +51,21 @@ connectDB().catch(error => {
   process.exit(1);
 });
 
-// Socket.IO setup
 const io = socketIO(server, {
   cors: {
-    // origin: allowedOrigins,
     origin: "*",
     methods: ["GET", "POST"],
     credentials: true,
   },
-  // Heroku-specific settings
   transports: ['websocket', 'polling'],
   pingTimeout: 60000,
   pingInterval: 25000
 });
 
 
-// --- Game & user state tracking ---
 const activeGames = new Map();
 const onlineUsers = new Map();
 
-// --- Socket authentication middleware ---
 io.use(async (socket, next) => {
   const token = socket.handshake.auth.token;
   if (!token) return next(new Error("Authentication error"));
