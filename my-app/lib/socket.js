@@ -8,15 +8,14 @@ let socket = null
 export const useSocket = () => {
   const { token } = useAuth()
   const [isConnected, setIsConnected] = useState(false)
+  const [error, setError] = useState(null)
 
   useEffect(() => {
     if (!token) return
 
-    // Create socket if it doesn't exist
     if (!socket) {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
       
-      // Determine proper WebSocket protocol
       let socketUrl = apiUrl
       if (apiUrl.startsWith('https://')) {
         socketUrl = apiUrl.replace('https://', 'wss://')
@@ -28,12 +27,16 @@ export const useSocket = () => {
       
       socket = io(socketUrl, {
         auth: { token },
-        transports: ['websocket']
+        transports: ['websocket'],
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
       })
 
       socket.on('connect', () => {
         console.log('Connected to server')
         setIsConnected(true)
+        setError(null)
       })
 
       socket.on('disconnect', () => {
@@ -43,6 +46,8 @@ export const useSocket = () => {
 
       socket.on('connect_error', (error) => {
         console.error('Connection error:', error)
+        setError(error.message)
+        setIsConnected(false)
       })
     }
 
@@ -56,5 +61,5 @@ export const useSocket = () => {
     }
   }, [token])
 
-  return socket
+  return { socket, isConnected, error }
 }

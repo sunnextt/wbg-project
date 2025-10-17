@@ -92,12 +92,15 @@ const createNewLobby = async () => {
   }
 }
 
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'
+
+
   const games = [
     {
       title: 'Ludo',
       description: 'Classic board game for 2-4 players',
       onClick: '/ludo/new',
-      imageUrl: 'http://localhost:3000/_next/image?url=%2F_next%2Fstatic%2Fmedia%2Fludo-board.b0ea43c3.webp&w=3840&q=75',
+      imageUrl: `${apiUrl}/_next/image?url=%2F_next%2Fstatic%2Fmedia%2Fludo-board.b0ea43c3.webp&w=3840&q=75`,
     },
   ]
 

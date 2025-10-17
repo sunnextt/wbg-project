@@ -10,7 +10,6 @@ import { toast } from 'react-toastify'
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import Dice from './Dice'
-import GameStatusDisplay from '../GameStatusDisplay'
 import { getColorHex } from '@/src/utils/ludoUtils'
 import GameChat from '../gameChat/GameChat'
 import { Toaster } from 'react-hot-toast'
@@ -29,7 +28,7 @@ export default function LudoCanvas({
 }) {
   const { nodes, materials } = useGLTF('/ludo_board_games.glb')
   const ludoBoardRef = useRef()
-  const socket = useSocket()
+  const { socket } = useSocket()
   const [localDiceValue, setLocalDiceValue] = useState(0)
   const [currentTurnName, setCurrentTurnName] = useState('')
   const [isRolling, setIsRolling] = useState(false)
