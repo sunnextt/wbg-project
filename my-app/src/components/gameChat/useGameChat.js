@@ -15,7 +15,7 @@ import { useSocket } from "@/lib/socket";
 
 export default function useGameChat(gameId, gameStatus) {
   const { user } = useAuth();
-  const socket = useSocket();
+  const {socket} = useSocket();
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
