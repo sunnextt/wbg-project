@@ -190,10 +190,10 @@ export const GameStatusProvider = ({ children }) => {
     (playerName, isCurrentUser = false) => {
       if (isCurrentUser) {
         const text = `🎉 Congratulations! You won the game! 🏆`
-        addToQueue(text, 5000)
+        addToQueue(text, 6000)
       } else {
         const text = `${playerName} won the game! 👑`
-        addToQueue(text, 5000)
+        addToQueue(text, 6000)
       }
 
       if (socket && isCurrentUser) {

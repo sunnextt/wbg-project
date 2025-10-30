@@ -563,20 +563,6 @@ export const getPawnIndexFromPawnId = (pawnId) => {
   return (pawnId - 1) % 4;
 };
 
-// Visual feedback for invalid moves
-export const showInvalidMoveFeedback = (object) => {
-  if (!object || !object.material) return;
-  
-  const originalColor = object.material.color.clone();
-  object.material.color.set(0xff0000);
-  
-  setTimeout(() => {
-    if (object && object.material) {
-      object.material.color.copy(originalColor);
-    }
-  }, 100);
-};
-
 // Auto-pass turn if no valid moves
 export const handleAutoPassTurn = (
   player, 
@@ -630,49 +616,3 @@ export  const getColorHex = (color) => {
     return colorMap[color] || '#9ca3af';
   };
 
-  // Add this function to safely handle positions
-export const safePosition = (position) => {
-  if (position === undefined || position === null) {
-    return 'home';
-  }
-  
-  if (typeof position === 'object') {
-    // Validate object position
-    if (position.x === undefined || position.y === undefined || position.z === undefined) {
-      return 'home';
-    }
-    return position;
-  }
-  
-  if (position === 'finish' || position === 'home') {
-    return position;
-  }
-  
-  return 'home'; // fallback
-};
-
-// Update your Firebase save function
-export const updateGameInFirestore = async (gameId, gameData) => {
-  try {
-    // Ensure all pawn positions are valid
-    if (gameData.players && Array.isArray(gameData.players)) {
-      gameData.players.forEach(player => {
-        if (player.pawns && Array.isArray(player.pawns)) {
-          player.pawns.forEach(pawn => {
-            pawn.position = safePosition(pawn.position);
-            
-            // Ensure path is always an array
-            if (!pawn.path || !Array.isArray(pawn.path)) {
-              pawn.path = [];
-            }
-          });
-        }
-      });
-    }
-    
-    await updateDoc(doc(db, 'games', gameId), gameData);
-  } catch (error) {
-    console.error('Error updating game:', error);
-    throw error;
-  }
-};
