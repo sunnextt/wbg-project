@@ -4,7 +4,7 @@ import useGameChat from './useGameChat'
 import { useAuth } from '@/lib/AuthContext'
 import toast from 'react-hot-toast'
 
-export default function GameChat({ gameId, gameStatus }) {
+export default function GameChat({ gameId, gameStatus, screenSize }) {
   const { user } = useAuth()
   const { messages, sendMessage, error, gameStarted } = useGameChat(gameId, gameStatus)
   const [input, setInput] = useState('')
@@ -82,7 +82,9 @@ export default function GameChat({ gameId, gameStatus }) {
   }
 
   return (
-    <div className='absolute bottom-2 right-4 w-80 bg-gradient-to-br from-purple-900 to-blue-800 rounded-lg shadow-xl border border-purple-600/30 z-50 backdrop-blur-sm'>
+    <div className={`absolute bottom-2 right-4 
+    ${screenSize === 'small' ? 'w-64' : 'w-80'}
+    bg-gradient-to-br from-purple-900 to-blue-800 rounded-lg shadow-xl border border-purple-600/30 z-50 backdrop-blur-sm`}>
       {/* Header */}
       <div className='flex items-center justify-between p-3 bg-gradient-to-r from-purple-700 to-blue-600 text-white rounded-t-lg border-b border-purple-500/30'>
         <h3 className='font-semibold'>Team Chat</h3>
@@ -94,7 +96,7 @@ export default function GameChat({ gameId, gameStatus }) {
       </div>
 
       {/* Messages */}
-      <div className='h-64 overflow-y-auto p-3 space-y-2 bg-gradient-to-br from-purple-50/40 via-blue-50/30 to-purple-50/40'>
+      <div className={`${screenSize === 'small' ? 'h-40' : 'h-64'} overflow-y-auto p-3 space-y-2 bg-gradient-to-br from-purple-50/40 via-blue-50/30 to-purple-50/40`}>
         {messages.length === 0 ? (
           <div className='text-center text-purple-200/70 text-sm py-8'>No messages yet</div>
         ) : (
