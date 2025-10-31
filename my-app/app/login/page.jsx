@@ -90,10 +90,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-white">
-      <div className="w-full max-w-md text-center">
-        <div className="mx-auto mb-6">
-          <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full mx-auto"></div>
+    <div className="min-h-screen flex items-start pt-4 sm:pt-8 md:items-center justify-center px-4 bg-white">
+      <div className="w-full max-w-md text-center mt-4 sm:mt-0">
+        <div className="mx-auto mb-3">
+          <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full mx-auto"></div>
         </div>
 
         <h1 className="text-2xl font-bold text-gray-900">Welcome Back!</h1>
