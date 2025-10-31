@@ -217,7 +217,7 @@ export default function LudoCanvas({
             ${screenSize === 'small' ? 'top-40 text-sm right-2' : 'top-4  right-4'}
           `}
         >
-          🎲 Dice: {gameState?.diceValue || localDiceValue}
+          {screenSize === 'small' ? 'dice' :'🎲 Dice' }: {gameState?.diceValue || localDiceValue}
         </div>
       )}
 
@@ -254,7 +254,7 @@ export default function LudoCanvas({
       {gameStatus === 'playing' && (
         <div
           className={`absolute bg-black bg-opacity-70 text-white p-2 md:p-3 rounded-lg z-20 text-xs md:text-base
-            ${screenSize === 'small' ? 'top-4 right-2' : 'top-4 left-4'}`}
+            ${screenSize === 'small' ? 'top-0 right-2' : 'top-4 left-4'}`}
         >
           {currentPlayerId === currentTurn ? 'Your turn!' : `${currentTurnName}'s turn`}
         </div>
