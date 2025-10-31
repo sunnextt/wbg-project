@@ -1,19 +1,17 @@
 'use client'
 
 import { Canvas } from '@react-three/fiber'
-import { useGLTF, OrthographicCamera } from '@react-three/drei'
-import { OrbitControls, Environment } from '@react-three/drei'
+import { useGLTF, OrthographicCamera, Environment, OrbitControls } from '@react-three/drei'
 import { useEffect, useRef, useState } from 'react'
 import LudoBoard from './LudoBoard'
+import Dice from './Dice'
+import GameChat from '../gameChat/GameChat'
 import { useSocket } from '@/lib/socket'
 import { toast } from 'react-toastify'
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
-import Dice from './Dice'
 import { getColorHex } from '@/src/utils/ludoUtils'
-import GameChat from '../gameChat/GameChat'
 import { Toaster } from 'react-hot-toast'
-
 
 export default function LudoCanvas({
   gameId,
@@ -33,19 +31,27 @@ export default function LudoCanvas({
   const [currentTurnName, setCurrentTurnName] = useState('')
   const [isRolling, setIsRolling] = useState(false)
   const [remoteRollingPlayer, setRemoteRollingPlayer] = useState(null)
+  const [screenSize, setScreenSize] = useState('desktop')
 
-
+  // Detect mobile screen
   useEffect(() => {
-    if (gameState?.diceValue !== undefined) {
-      setLocalDiceValue(gameState.diceValue)
+    const checkScreenSize = () => {
+      const width = window.innerWidth
+      if (width <= 460) setScreenSize('small')
+      else setScreenSize('desktop')
     }
-    if (gameState?.isRolling !== undefined) {
-      setIsRolling(gameState?.isRolling)
-    }
-    if (gameState?.rollingPlayerId !== undefined) {
-      setRemoteRollingPlayer(gameState?.rollingPlayerId)
-    }
-  }, [gameState?.diceValue, gameState?.isRolling, gameState?.rollingPlayerId])
+
+    checkScreenSize()
+    window.addEventListener('resize', checkScreenSize)
+    return () => window.removeEventListener('resize', checkScreenSize)
+  }, [])
+
+  // Sync game state values
+  useEffect(() => {
+    if (gameState?.diceValue !== undefined) setLocalDiceValue(gameState.diceValue)
+    if (gameState?.isRolling !== undefined) setIsRolling(gameState.isRolling)
+    if (gameState?.rollingPlayerId !== undefined) setRemoteRollingPlayer(gameState.rollingPlayerId)
+  }, [gameState])
 
   // Update current player name
   useEffect(() => {
@@ -56,7 +62,6 @@ export default function LudoCanvas({
   const handleRollStart = async () => {
     try {
       const gameRef = doc(db, 'games', gameId)
-
       await updateDoc(gameRef, {
         isRolling: true,
         rollingPlayerId: currentPlayerId,
@@ -76,22 +81,16 @@ export default function LudoCanvas({
 
   const handleRollComplete = async (result) => {
     try {
-      // if (localDiceValue !== 0) return
-      // if (localDiceValue !== 0) return
-
       setLocalDiceValue(result)
       setIsRolling(false)
-
       onRollDice(result)
-    } catch (error) {
+    } catch {
       setIsRolling(false)
     }
   }
 
   const handleRollDice = () => {
-    if (canRollDice()) {
-      handleRollStart()
-    }
+    if (canRollDice()) handleRollStart()
   }
 
   const canRollDice = () => {
@@ -113,27 +112,25 @@ export default function LudoCanvas({
   }
 
   const handlePawnMove = (moveData) => {
-    if (onPawnMove) {
-      onPawnMove({
-        gameId,
-        playerId: currentPlayerId,
-        pawnId: `${moveData.color}-${moveData.pawnIndex}`,
-        newPosition: moveData.newPosition,
-        timestamp: Date.now(),
-      })
-    }
+    onPawnMove?.({
+      gameId,
+      playerId: currentPlayerId,
+      pawnId: `${moveData.color}-${moveData.pawnIndex}`,
+      newPosition: moveData.newPosition,
+      timestamp: Date.now(),
+    })
   }
 
   return (
-    <div className='relative w-full h-screen overflow-hidden flex items-center justify-center bg-gradient-to-br from-blue-900 to-purple-600'>
+    <div
+      className={`relative w-full ${screenSize === 'small' ? 'h-96' : 'h-screen'}  overflow-hidden flex items-center justify-center bg-gradient-to-br from-blue-900 to-purple-600`}
+    >
+      {/* Subtle background */}
       <div className="absolute inset-0 bg-[url('/images/ludo-bg.jpg')] bg-cover bg-center opacity-10 blur-sm z-0 pointer-events-none" />
 
-      <Canvas
-        shadows
-        // camera={{ position: [0, 25, 0], fov: 45, far: 1000 }}
-        gl={{ preserveDrawingBuffer: true }}
-      >
-        <OrthographicCamera makeDefault position={[0, 25, 0]} zoom={45} />
+      {/* Scaled Canvas container */}
+      <Canvas shadows gl={{ preserveDrawingBuffer: true }}>
+        <OrthographicCamera makeDefault position={[0, 25, 0]} zoom={screenSize === 'small' ? 28 : 45} />
         <ambientLight intensity={0.5} />
         <directionalLight position={[10, 20, 10]} intensity={1.2} castShadow />
         <Environment preset='park' />
@@ -169,14 +166,10 @@ export default function LudoCanvas({
         />
       </Canvas>
 
-      {/* Game UI Controls */}
+      {/* Toasts */}
       <Toaster
-        position="bottom-center"
-        containerStyle={{
-          position: 'absolute',
-          bottom: '80px',
-          zIndex: 1000,
-        }}
+        position='bottom-center'
+        containerStyle={{ position: 'absolute', bottom: '80px', zIndex: 1000 }}
         toastOptions={{
           duration: 3000,
           style: {
@@ -190,52 +183,64 @@ export default function LudoCanvas({
         }}
       />
 
-      {/* Your GameChat component */}
       <GameChat gameId={gameId} gameStatus={gameStatus} />
 
-      <div className='absolute bottom-8 left-0 right-0 flex flex-col items-center gap-2'>
+      {/* Roll Button */}
+      <div
+        className={`absolute bottom-8  gap-2   ${
+          screenSize === 'small' ? 'left-1/2 transform -translate-x-12' : 'left-0 right-0 flex flex-col items-center'
+        }`}
+      >
         <button
           onClick={handleRollDice}
-          className={`px-6 py-2 rounded-full font-bold text-base shadow-lg transition-all md:px-8 md:py-2 md:text-lg
+          className={` md:px-8 md:py-3 text-sm md:text-lg rounded-full font-bold shadow-lg 
+            
+            transition-all 
+   ${screenSize === 'small' ? 'px-2 py-2' : 'px-8 py-3'}
+        
+            
             ${
               canRollDice()
                 ? 'bg-yellow-400 hover:bg-yellow-500 text-black'
                 : 'bg-gray-500 text-gray-200 cursor-not-allowed'
-            } 
-            ${isRolling || remoteRollingPlayer ? 'opacity-70 scale-95' : 'hover:scale-105'}`}
+            } ${isRolling || remoteRollingPlayer ? 'opacity-70 scale-95' : 'hover:scale-105'}`}
           disabled={!canRollDice()}
         >
           {getButtonText()}
         </button>
       </div>
 
-      {/* Dice value display */}
+      {/* Dice Value */}
       {(gameState?.diceValue || localDiceValue > 0) && (
-        <div className='absolute top-4 right-4 bg-black bg-opacity-70 text-white p-3 rounded-lg z-10'>
-          Dice: {gameState?.diceValue || localDiceValue}
+        <div
+          className={`absolute top-4 bg-black bg-opacity-70 text-white p-2 rounded-lg z-10
+            ${screenSize === 'small' ? 'top-40 text-sm right-2' : 'top-4  right-4'}
+          `}
+        >
+          🎲 Dice: {gameState?.diceValue || localDiceValue}
         </div>
       )}
 
-      {/* Player Color Indicators */}
+      {/* Player Colors */}
       {gameStatus === 'playing' && (
-        <div className='absolute md:absolute md:top-20 md:bottom-auto left-4 bg-black bg-opacity-70 text-white p-4 rounded-lg z-20 absolute bottom-2 top-auto'>
-          <h3 className='text-lg font-bold mb-2'>Player Colors</h3>
-          <div className='space-y-2'>
+        <div className='absolute md:absolute md:top-20 md:bottom-auto left-2 bg-black bg-opacity-70 text-white p-2 md:p-4 sm:p-4  rounded-lg z-20 absolute bottom-2 top-auto'>
+          <h3 className='text-sm md:text-lg font-bold mb-2'>Player Colors</h3>
+          <div className='space-y-1 md:space-y-2'>
             {players.map((player) => (
               <div
                 key={player.id}
-                className={`flex items-center space-x-2 p-2 rounded ${
-                  player.id === currentPlayerId ? 'bg-gray-700' : ''
+                className={`flex items-center justify-start space-x-2 text-xs md:text-sm ${
+                  player.id === currentPlayerId ? 'bg-gray-700 p-2 rounded' : ''
                 }`}
               >
                 <div
-                  className='w-4 h-4 rounded-full border-2 border-white'
+                  className='w-3 h-3 md:w-4 md:h-4 rounded-full border-2 border-white'
                   style={{
                     backgroundColor: getColorHex(player.color),
                     boxShadow: player.id === currentTurn ? '0 0 8px 2px white' : 'none',
                   }}
                 />
-                <span className='text-sm'>
+                <span>
                   {player.name} {player.id === currentPlayerId && '(You)'}
                   {player.id === currentTurn && ' 🎯'}
                 </span>
@@ -245,9 +250,12 @@ export default function LudoCanvas({
         </div>
       )}
 
-      {/* Turn indicator */}
-      {gameStatus == 'playing' && (
-        <div className='absolute top-4 left-4 bg-black bg-opacity-70 text-white p-3 rounded-lg z-20'>
+      {/* Turn Indicator */}
+      {gameStatus === 'playing' && (
+        <div
+          className={`absolute bg-black bg-opacity-70 text-white p-2 md:p-3 rounded-lg z-20 text-xs md:text-base
+            ${screenSize === 'small' ? 'top-4 right-2' : 'top-4 left-4'}`}
+        >
           {currentPlayerId === currentTurn ? 'Your turn!' : `${currentTurnName}'s turn`}
         </div>
       )}
