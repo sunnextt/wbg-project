@@ -183,7 +183,7 @@ export default function LudoCanvas({
         }}
       />
 
-      <GameChat gameId={gameId} gameStatus={gameStatus} />
+      <GameChat gameId={gameId} gameStatus={gameStatus} screenSize={screenSize} />
 
       {/* Roll Button */}
       <div
