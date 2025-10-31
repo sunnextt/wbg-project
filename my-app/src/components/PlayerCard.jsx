@@ -1,4 +1,3 @@
-// components/PlayerCard.jsx
 export default function PlayerCard({ name, points }) {
   return (
     <div className="bg-gray-100 px-3 py-2 rounded-md flex justify-between text-sm">

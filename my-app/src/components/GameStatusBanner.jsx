@@ -1,4 +1,3 @@
-// components/GameStatusBanner.jsx
 'use client'
 export default function GameStatusBanner({ status, playerCount, currentPlayerId }) {
   const getStatusMessage = () => {
